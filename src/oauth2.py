@@ -7,7 +7,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from starlette import status
 
-from src import schemas, models, database
+from . import schemas, models, database
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 

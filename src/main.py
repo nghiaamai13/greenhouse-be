@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 
-from src import models, utils
-from src.database import SessionLocal
-from src.database import engine
-from src.route import device, user, auth, farm
+from . import models, utils
+from .database import SessionLocal
+from .database import engine
+from .route import device, user, auth, farm
 
 app = FastAPI()
 

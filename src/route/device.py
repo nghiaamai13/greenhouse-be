@@ -6,8 +6,8 @@ from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from starlette import status
 
-from src import schemas, models, oauth2
-from src.database import get_db
+from .. import schemas, models, oauth2
+from ..database import get_db
 
 router = APIRouter(
     prefix="/device",
@@ -37,6 +37,11 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="You must be the owner of the device profile to access")
 
+    same_device_name = db.query(models.Device).filter(models.Device.name == device.name).all()
+    farm_ids = [dev.farm_id for dev in same_device_name]
+    if device.farm_id in farm_ids:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"The device with name {device.name} already exists in this farm")     
+    
     new_device = models.Device(**device.model_dump())
     db.add(new_device)
     db.commit()
@@ -66,19 +71,45 @@ def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
 def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                    current_user: models.User = Depends(oauth2.get_current_user),
                    data: dict = None):
-    if data is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No data received")
-
     device = get_device_by_id(device_id, db, current_user)
-    # post to table telemetry
+    if device:
+        if data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="No data received")
+
+        for key, value in data.items():
+            existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.key == key).first()
+            if not existing_key:
+                new_key = models.TimeSeriesKey(key=key)
+                db.add(new_key)
+                db.commit()
+                db.refresh(new_key)
+                print(f"Inserted new key: {new_key}")
+            else:
+                new_key = existing_key
+            telemetry_data = models.TimeSeries(
+                key_id=new_key.ts_key_id,
+                device_id=device_id,
+                value=value,
+            )
+            db.add(telemetry_data)
+            db.commit()
+            
+        print(f"Received telemetry data from device with id: {device_id}")
 
 
 @router.post("/profile", status_code=status.HTTP_201_CREATED,
              response_model=schemas.DeviceProfileResponse)
 def create_device_profile(profile: schemas.DeviceProfileCreate, db: Session = Depends(get_db),
                           current_user: models.User = Depends(oauth2.get_current_user)):
+    
+    profile_with_name = db.query(models.DeviceProfile).filter(models.DeviceProfile.name == profile.name).all()
+    profile_owner_ids = [f.owner_id for f in profile_with_name]
+    if current_user.user_id in profile_owner_ids:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"The device profile with name {profile.name} already exists")
+    
     new_profile = models.DeviceProfile(owner_id=current_user.user_id, **profile.model_dump())
+    
     db.add(new_profile)
     db.commit()
     db.refresh(new_profile)

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from starlette import status
 
 from src import schemas, models, utils
-from src.database import get_db
+from ..database import get_db
 
 
 router = APIRouter(

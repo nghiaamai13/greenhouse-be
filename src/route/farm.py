@@ -5,8 +5,8 @@ from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from starlette import status
 
-from src import schemas, models, oauth2
-from src.database import get_db
+from .. import schemas, models, oauth2
+from ..database import get_db
 
 router = APIRouter(
     prefix="/farm",
@@ -17,7 +17,11 @@ router = APIRouter(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
                 current_user: models.User = Depends(oauth2.get_current_user)):
-    print(current_user)
+    farm_with_name = db.query(models.Farm).filter(models.Farm.name == farm.name).all()
+    farm_user_ids = [f.owner_id for f in farm_with_name]
+    if current_user.user_id in farm_user_ids:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A farm with name {farm.name} already exists")
+        
     new_farm = models.Farm(owner_id=current_user.user_id, **farm.model_dump())
     db.add(new_farm)
     db.commit()
@@ -29,7 +33,7 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
 @router.get("/all", response_model=List[schemas.FarmResponse])
 def get_all_farm(db: Session = Depends(get_db),
                  current_user: models.User = Depends(oauth2.get_current_user)):
-    farms = db.query(models.Farm).filter(models.DeviceProfile.owner_id == current_user.user_id).all()
+    farms = db.query(models.Farm).filter(models.Farm.owner_id == current_user.user_id).all()
 
     return farms
 

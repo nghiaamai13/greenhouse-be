@@ -45,18 +45,20 @@ class Device(Base):
     farm = relationship("Farm")
     device_profile = relationship("DeviceProfile")
 
-#
-# class TimeSeriesKey(Base):
-#     __tablename__ = 'ts_keys'
-#     key = Column(String(100), primary_key=True)
-#     key_id = Column(Integer, nullable=False, unique=True, autoincrement=True)
-#
-#
-# class TimeSeries(Base):
-#     __tablename__ = 'ts_values_latest'
-#     id = Column(Integer, primary_key=True)
-#     device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
-#     key = Column(String(100), ForeignKey('ts_keys.key', ondelete="CASCADE"), nullable=False)
-#     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-#     int_val = Column(BigInteger)
 
+class TimeSeriesKey(Base):
+    __tablename__ = 'ts_keys'
+    ts_key_id = Column(Integer, primary_key=True)
+    key = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class TimeSeries(Base):
+    __tablename__ = 'ts_values'
+    value = Column(String)
+    ts_id = Column(Integer, primary_key=True)
+    key_id = Column(Integer, ForeignKey('ts_keys.ts_key_id', ondelete="CASCADE"), nullable=False)
+    device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
+    device = relationship('Device')
+    key = relationship('TimeSeriesKey')
+    timstamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
