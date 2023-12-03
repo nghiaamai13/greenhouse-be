@@ -6,7 +6,7 @@ from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from starlette import status
 
-from .. import schemas, models, oauth2
+from .. import schemas, models, oauth2, mqtt
 from ..database import get_db
 
 router = APIRouter(
@@ -46,8 +46,17 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db),
     db.add(new_device)
     db.commit()
     db.refresh(new_device)
-
+    mqtt.mqtt_subscriber.subscribe_all()
     return new_device
+
+
+@router.get('/all', response_model=List[schemas.DeviceResponse])
+def get_all_devices(db: Session = Depends(get_db),
+                    current_user: models.User = Depends(oauth2.get_current_user)):
+    devices = (db.query(models.Device)
+                         .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
+                         .filter(models.Farm.owner_id == current_user.user_id).all())
+    return devices
 
 
 @router.get("/{device_id}", response_model=schemas.DeviceResponse)
@@ -67,7 +76,7 @@ def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
     return device
 
 
-@router.post("/{device_id}/telemetry")
+@router.post("/{device_id}/telemetry", status_code=status.HTTP_201_CREATED)
 def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                    current_user: models.User = Depends(oauth2.get_current_user),
                    data: dict = None):
@@ -76,7 +85,6 @@ def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
         if data is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="No data received")
-
         for key, value in data.items():
             existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.key == key).first()
             if not existing_key:

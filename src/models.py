@@ -49,13 +49,13 @@ class Device(Base):
 class TimeSeriesKey(Base):
     __tablename__ = 'ts_keys'
     ts_key_id = Column(Integer, primary_key=True)
-    key = Column(String)
+    key = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class TimeSeries(Base):
     __tablename__ = 'ts_values'
-    value = Column(String)
+    value = Column(String, nullable=False)
     ts_id = Column(Integer, primary_key=True)
     key_id = Column(Integer, ForeignKey('ts_keys.ts_key_id', ondelete="CASCADE"), nullable=False)
     device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
