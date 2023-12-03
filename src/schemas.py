@@ -1,23 +1,33 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-
-from pydantic import BaseModel
+from enum import Enum
+from pydantic import BaseModel, validator
 
 
 class UserBase(BaseModel):
     username: str
     password: str
 
-
+class Roles(str, Enum):
+    ADMIN = 'admin'
+    TENANT = 'tenant'
+    CUSTOMER = 'customer' 
+    
 class UserCreate(UserBase):
-    pass
-
+    role: Optional[Roles] = None
+    class Config:
+        validate_assignment = True
+            
+    @validator('role')
+    def set_role(cls, role):
+        return role or Roles.CUSTOMER
 
 class UserResponse(BaseModel):
     user_id: UUID
     username: str
     created_at: datetime
+    role: str
 
 
 class FarmBase(BaseModel):
@@ -79,3 +89,4 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[str] = None
+    scope: str

@@ -1,7 +1,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import Depends, APIRouter, HTTPException
+from fastapi import Depends, APIRouter, HTTPException, Security
 from sqlalchemy.orm import Session
 from starlette import status
 
@@ -10,13 +10,13 @@ from ..database import get_db
 
 router = APIRouter(
     prefix="/farm",
-    tags=["farm"]
+    tags=["Farm"]
 )
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
-                current_user: models.User = Depends(oauth2.get_current_user)):
+                current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
     farm_with_name = db.query(models.Farm).filter(models.Farm.name == farm.name).all()
     farm_user_ids = [f.owner_id for f in farm_with_name]
     if current_user.user_id in farm_user_ids:

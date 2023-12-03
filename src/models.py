@@ -13,7 +13,7 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False)
     password = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    role = Column(String(50), default="customer")
+    role = Column(String(50), default="customer", nullable=False)
 
 
 class Farm(Base):

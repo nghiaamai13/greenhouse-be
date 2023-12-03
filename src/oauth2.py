@@ -2,10 +2,11 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from starlette import status
+from pydantic import ValidationError
 
 from . import schemas, models, database
 
@@ -24,28 +25,32 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 
-def verify_access_token(token: str, credentials_exception):
+def get_current_user(security_scopes: SecurityScopes, token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    ) 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: int = payload.get("username")
         user_id: str = payload.get("user_id")
         if username is None:
             raise credentials_exception
+        token_scope = payload.get("scope")
+        token_data = schemas.TokenData(scope=token_scope, username=username, user_id=user_id)
 
-        token_data = schemas.TokenData(username=username, user_id=user_id)
-
-    except JWTError:
+    except (JWTError, ValidationError) as e:
+        print(e)
         raise credentials_exception
-
-    return token_data
-
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
-    credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not valid credentials"
-                                          , headers={"WWW-Authenticate": "Bearer"})
-
-    token = verify_access_token(token, credentials_exception)
-
-    user = db.query(models.User).filter(models.User.username == token.username).first()
-
+    
+    user = db.query(models.User).filter(models.User.username == username).first()
+    
+    if len(security_scopes.scopes) != 0 and token_data.scope not in security_scopes.scopes:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not enough permissions",
+            headers={"WWW-Authenticate": f"Bearer scope={token_data.scope}"},
+        )
     return user
+

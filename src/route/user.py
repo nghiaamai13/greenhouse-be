@@ -1,8 +1,9 @@
-from fastapi import Depends, APIRouter, HTTPException
+from fastapi import Depends, APIRouter, HTTPException, Security
+from fastapi.security import SecurityScopes
 from sqlalchemy.orm import Session
 from starlette import status
 
-from src import schemas, models, utils
+from src import schemas, models, utils, oauth2
 from ..database import get_db
 
 
@@ -13,7 +14,7 @@ router = APIRouter(
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.UserResponse)
-def create_user(user_credentials: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(user_credentials: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Security(oauth2.get_current_user, scopes="admin")):
     username = db.query(models.User).filter(models.User.username == user_credentials.username).first()
     if username:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
