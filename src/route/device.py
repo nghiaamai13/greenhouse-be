@@ -10,7 +10,7 @@ from .. import schemas, models, oauth2, mqtt
 from ..database import get_db
 
 router = APIRouter(
-    prefix="/device",
+    prefix="/api/device",
     tags=["Device"]
 )
 
@@ -80,7 +80,7 @@ def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
 def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                    data: dict = None):
     
-    if data is None:
+    if data is None or data == {}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No data received")
     for key, value in data.items():

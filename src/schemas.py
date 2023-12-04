@@ -10,24 +10,21 @@ class UserBase(BaseModel):
     password: str
 
 class Roles(str, Enum):
-    ADMIN = 'admin'
     TENANT = 'tenant'
-    CUSTOMER = 'customer' 
+    
+class TenantCreate(UserBase):
+    role: Roles = Roles.TENANT
     
 class UserCreate(UserBase):
-    role: Optional[Roles] = None
-    class Config:
-        validate_assignment = True
-            
-    @validator('role')
-    def set_role(cls, role):
-        return role or Roles.CUSTOMER
+    pass
+    
 
 class UserResponse(BaseModel):
     user_id: UUID
     username: str
     created_at: datetime
     role: str
+    created_by: UUID
 
 
 class FarmBase(BaseModel):

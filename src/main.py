@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from uuid import uuid4
 
 from . import models, utils
 from .database import SessionLocal
@@ -22,7 +23,8 @@ def start():
         if not db.query(models.User).all():
             admin_user = models.User(username="admin",
                                      password=utils.get_password_hash("admin"),
-                                     role="admin")
+                                     role="admin",
+                                     created_by='00000000-0000-0000-0000-000000000000')
             db.add(admin_user)
             db.commit()
             print(admin_user)

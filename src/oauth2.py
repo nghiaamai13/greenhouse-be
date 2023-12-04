@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from . import schemas, models, database
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 SECRET_KEY = "nghia"
 ALGORITHM = "HS256"

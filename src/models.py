@@ -1,6 +1,7 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, Integer, String, func, DateTime, ForeignKey, BigInteger
+from sqlalchemy import (Boolean, Column, Integer, String, Table,
+                        func, DateTime, ForeignKey, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -14,7 +15,12 @@ class User(Base):
     password = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     role = Column(String(50), default="customer", nullable=False)
+    created_by = Column(UUID(as_uuid=True), nullable=False)
 
+    # Add a unique constraint on the combination of username and tenant_id
+    __table_args__ = (
+        UniqueConstraint('username', 'created_by'),
+    )
 
 class Farm(Base):
     __tablename__ = 'farms'
@@ -22,6 +28,14 @@ class Farm(Base):
     name = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+
+#     assigned_customers = relationship('User', backref='assigned_farm', secondary='farm_assignment')
+
+
+# farm_assignment = Table('farm_assignment', Base.metadata,
+#     Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
+#     Column('user_id', UUID(as_uuid=True), ForeignKey('users.user_id', ondelete="CASCADE"))
+# )
 
 
 class DeviceProfile(Base):
