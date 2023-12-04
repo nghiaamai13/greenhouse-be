@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 from enum import Enum
 from pydantic import BaseModel, validator
@@ -39,7 +39,7 @@ class FarmResponse(FarmBase):
     farm_id: UUID
     created_at: datetime
     owner_id: UUID
-
+    assigned_customers: List[UserResponse]
 
 class DeviceProfileBase(BaseModel):
     name: str

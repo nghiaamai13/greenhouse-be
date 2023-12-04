@@ -19,23 +19,17 @@ router = APIRouter(
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db),
                   current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
     
-    farm_query = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id)
+    farm_query = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id, 
+                                              models.Farm.owner_id == current_user.user_id)
     farm = farm_query.first()
     if not farm:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Farm not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found")
 
-    profile_query = db.query(models.DeviceProfile).filter(models.DeviceProfile.profile_id == device.device_profile_id)
+    profile_query = db.query(models.DeviceProfile).filter(models.DeviceProfile.profile_id == device.device_profile_id,
+                                                          models.DeviceProfile.owner_id == current_user.user_id)
     profile = profile_query.first()
     if not profile:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Profile not found")
-
-    if farm.owner_id != current_user.user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="You must be the owner of the farm to access")
-
-    if profile.owner_id != current_user.user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="You must be the owner of the device profile to access")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
 
     same_device_name = db.query(models.Device).filter(models.Device.name == device.name).all()
     farm_ids = [dev.farm_id for dev in same_device_name]

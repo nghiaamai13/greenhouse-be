@@ -19,7 +19,7 @@ class User(Base):
 
     # Add a unique constraint on the combination of username and tenant_id
     __table_args__ = (
-        UniqueConstraint('username', 'created_by'),
+        UniqueConstraint('user_id', 'created_by'),
     )
 
 class Farm(Base):
@@ -29,13 +29,14 @@ class Farm(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
 
-#     assigned_customers = relationship('User', backref='assigned_farm', secondary='farm_assignment')
+    assigned_customers = relationship('User', backref='assigned_farm', secondary='farm_assignment')
 
 
-# farm_assignment = Table('farm_assignment', Base.metadata,
-#     Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
-#     Column('user_id', UUID(as_uuid=True), ForeignKey('users.user_id', ondelete="CASCADE"))
-# )
+farm_assignment = Table('farm_assignment', Base.metadata,
+    Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
+    Column('user_id', UUID(as_uuid=True), ForeignKey('users.user_id', ondelete="CASCADE")),
+    UniqueConstraint('farm_id', 'user_id')
+)
 
 
 class DeviceProfile(Base):

@@ -6,7 +6,11 @@ from .database import SessionLocal
 from .database import engine
 from .route import device, user, auth, farm
 
-app = FastAPI()
+app = FastAPI(
+    title="Greenhouse",
+    description="API for greenhouse project",
+    version="0.1.0"
+)
 
 #models.Base.metadata.create_all(bind=engine)
 
@@ -17,7 +21,7 @@ app.include_router(farm.router)
 
 
 @app.on_event("startup")
-def start():
+def create_admin():
     db = SessionLocal()
     try:
         if not db.query(models.User).all():
