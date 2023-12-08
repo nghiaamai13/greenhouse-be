@@ -2,7 +2,7 @@ from fastapi import Depends, APIRouter, HTTPException, Security, Response
 from sqlalchemy.orm import Session
 from starlette import status
 from uuid import UUID
-
+from typing import List
 from src import schemas, models, utils, oauth2
 from ..database import get_db
 
@@ -27,6 +27,14 @@ def create_customer(user_credentials: schemas.UserCreate, db: Session = Depends(
     db.commit()
     db.refresh(new_user)
     return new_user
+
+
+@router.get("/customer/all", response_model=List[schemas.UserResponse])
+def get_all_customer(db: Session = Depends(get_db),
+                    current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
+    
+    customers = db.query(models.User).filter(models.User.created_by == current_user.user_id).all()
+    return customers
 
 
 @router.post("/tenant", status_code=status.HTTP_201_CREATED, response_model=schemas.UserResponse)

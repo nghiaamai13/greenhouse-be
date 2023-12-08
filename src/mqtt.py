@@ -42,7 +42,7 @@ class MQTTSubscriber:
                     telemetry_data = models.TimeSeries(
                         key_id=new_key.ts_key_id,
                         device_id=device_id,
-                        value=value,
+                        value=float(value),
                     )
                     db.add(telemetry_data)
                     db.commit()

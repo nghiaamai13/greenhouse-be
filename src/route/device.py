@@ -46,10 +46,17 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db),
 
 @router.get('/all', response_model=List[schemas.DeviceResponse])
 def get_all_devices(db: Session = Depends(get_db),
-                    current_user: models.User = Depends(oauth2.get_current_user)):
-    devices = (db.query(models.Device)
-                         .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
-                         .filter(models.Farm.owner_id == current_user.user_id).all())
+                    current_user: models.User = Security(oauth2.get_current_user,
+                                                         scopes=["tenant", "customer"])):
+    if current_user.role == "tenant":
+        devices = (db.query(models.Device)
+                            .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
+                            .filter(models.Farm.owner_id == current_user.user_id).all())
+    else:
+        devices = (db.query(models.Device)
+                            .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
+                            .filter(models.Farm.assigned_customer == current_user.user_id).all())
+        
     return devices
 
 
@@ -57,45 +64,20 @@ def get_all_devices(db: Session = Depends(get_db),
 def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
                      current_user: models.User = Depends(oauth2.get_current_user)):
     try:
-        device, owner = (db.query(models.Device, models.Farm.owner_id)
+        device, tenant_id, customer_id = (db.query(models.Device, models.Farm.owner_id, models.Farm.assigned_customer)
                          .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
                          .filter(models.Device.device_id == device_id).first())
     except TypeError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
-
-    if owner != current_user.user_id:
+    print(device,  tenant_id, customer_id)
+    
+    if tenant_id == current_user.user_id or customer_id == current_user.user_id:
+        return device
+    else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="You do not have permission to access this entity")
 
-    return device
-
-
-@router.post("/{device_id}/telemetry", status_code=status.HTTP_201_CREATED)
-def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
-                   data: dict = None):
     
-    if data is None or data == {}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No data received")
-    for key, value in data.items():
-        existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.key == key).first()
-        if not existing_key:
-            new_key = models.TimeSeriesKey(key=key)
-            db.add(new_key)
-            db.commit()
-            db.refresh(new_key)
-            print(f"Inserted new key: {new_key}")
-        else:
-            new_key = existing_key
-        telemetry_data = models.TimeSeries(
-            key_id=new_key.ts_key_id,
-            device_id=device_id,
-            value=value,
-        )
-        db.add(telemetry_data)
-        db.commit()
-        
-    print(f"Received telemetry data from device with id: {device_id}")
 
 
 @router.post("/profile", status_code=status.HTTP_201_CREATED,
@@ -119,6 +101,7 @@ def create_device_profile(profile: schemas.DeviceProfileCreate, db: Session = De
 
 @router.get("/profile/all", response_model=List[schemas.DeviceProfileResponse])
 def get_all_device_profile(db: Session = Depends(get_db),
-                           current_user: models.User = Depends(oauth2.get_current_user)):
+                           current_user: models.User = Security(oauth2.get_current_user,
+                                                                scopes=["tenant"])):
     profiles = db.query(models.DeviceProfile).filter(models.DeviceProfile.owner_id == current_user.user_id).all()
     return profiles

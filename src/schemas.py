@@ -39,7 +39,7 @@ class FarmResponse(FarmBase):
     farm_id: UUID
     created_at: datetime
     owner_id: UUID
-    assigned_customers: List[UserResponse]
+    assigned_customer: Optional[UUID] = None
 
 class DeviceProfileBase(BaseModel):
     name: str
