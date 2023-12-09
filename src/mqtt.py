@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 from .database import SessionLocal
 from src import models
 import json
-
+from .route.telemetry import add_ts
 
 class MQTTSubscriber:
     def __init__(self):
@@ -29,26 +29,11 @@ class MQTTSubscriber:
             print("Received a non-empty JSON object. Inserting into the database.")
             try:
                 db = SessionLocal()
+                device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
                 for key, value in data.items():
-                    existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.key == key).first()
-                    if not existing_key:
-                        new_key = models.TimeSeriesKey(key=key)
-                        db.add(new_key)
-                        db.commit()
-                        db.refresh(new_key)
-                        print(f"Inserted new key: {new_key.key}")
-                    else:
-                        new_key = existing_key
-                    telemetry_data = models.TimeSeries(
-                        key_id=new_key.ts_key_id,
-                        device_id=device_id,
-                        value=float(value),
-                    )
-                    db.add(telemetry_data)
-                    db.commit()
-                    print(f"Posted telemetry data from device with id: {device_id}")
+                    add_ts(device, key, value, db)
             except Exception as e:
-                print(f"Failed to insert data into the database: {str(e)}")
+                print(str(e))
             finally:
                 db.close()
 

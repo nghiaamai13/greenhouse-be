@@ -16,6 +16,8 @@ router = APIRouter(
 def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                    data: dict = None):
     device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
+    current_farm = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id).first()
+
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
     
@@ -24,22 +26,33 @@ def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                             detail="No data received")
     
     for key, value in data.items():
-        existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.key == key).first()
-        if not existing_key:
-            new_key = models.TimeSeriesKey(key=key)
-            db.add(new_key)
-            db.commit()
-            db.refresh(new_key)
-            print(f"Inserted new key: {new_key}")
-        else:
-            new_key = existing_key
-        telemetry_data = models.TimeSeries(
-            key_id=new_key.ts_key_id,
-            device_id=device_id,
-            value=float(value),
-        )
-        db.add(telemetry_data)
-        db.commit()
+        add_ts(device, key, value, db)
         
-    print(f"Received telemetry data from device with id: {device_id}")
+    print(f"Received telemetry datas from device with id: {device_id}")
 
+
+def add_ts(device: models.Device, key, value, db: Session):
+    existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.ts_key == key).first()
+    if not existing_key:
+        new_key = models.TimeSeriesKey(ts_key=key)
+        db.add(new_key)
+        db.commit()
+        db.refresh(new_key)
+        print(f"Inserted new key: {key} to the database")
+        
+    else:
+        new_key = existing_key
+    
+    current_farm = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id).first()
+    if new_key not in current_farm.farm_keys:
+        current_farm.farm_keys.append(new_key)
+        db.commit()
+        print(f"Added key: {key} on farm: {current_farm.farm_id}") 
+                
+    telemetry_data = models.TimeSeries(
+        key=new_key.ts_key,
+        device_id=device.device_id,
+        value=float(value),
+    )
+    db.add(telemetry_data)
+    db.commit()

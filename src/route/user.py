@@ -31,7 +31,7 @@ def create_customer(user_credentials: schemas.UserCreate, db: Session = Depends(
 
 @router.get("/customer/all", response_model=List[schemas.UserResponse])
 def get_all_customer(db: Session = Depends(get_db),
-                    current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
+                     current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
     
     customers = db.query(models.User).filter(models.User.created_by == current_user.user_id).all()
     return customers
@@ -52,6 +52,12 @@ def create_tenant(user_credentials: schemas.TenantCreate, db: Session = Depends(
     db.refresh(new_user)
     return new_user
 
+@router.get("/tenant/all", response_model=List[schemas.UserResponse])
+def get_all_tenant(db: Session = Depends(get_db),
+                   current_user: models.User = Security(oauth2.get_current_user, scopes=["admin"])):
+    
+    tenants = db.query(models.User).filter(models.User.created_by == current_user.user_id).all()
+    return tenants
 
 @router.delete("/customer/{customer_id}", status_code=status.HTTP_200_OK)
 def delete_customer(customer_id: UUID, db: Session = Depends(get_db),
@@ -59,8 +65,8 @@ def delete_customer(customer_id: UUID, db: Session = Depends(get_db),
     customer_query = db.query(models.User).filter(models.User.user_id == customer_id,
                                                   models.User.created_by == current_user.user_id)
     if customer_query.first() == None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
-                            ,detail="Not found or invalid ownership detected.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Not found or invalid ownership detected.")
     customer_query.delete(synchronize_session=False)
     
     db.commit()
@@ -70,7 +76,7 @@ def delete_customer(customer_id: UUID, db: Session = Depends(get_db),
 
 @router.delete("/tenant/{tenant_id}", status_code=status.HTTP_200_OK)
 def delete_tenant(tenant_id: UUID, db: Session = Depends(get_db),
-                    current_user: models.User = Security(oauth2.get_current_user, scopes=["admin"])):
+                  current_user: models.User = Security(oauth2.get_current_user, scopes=["admin"])):
     tenant = db.query(models.User).filter(models.User.user_id == tenant_id)
     if tenant.first() == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND

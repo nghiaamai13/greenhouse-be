@@ -2,7 +2,7 @@ import json
 from typing import List
 from uuid import UUID
 
-from fastapi import Depends, APIRouter, HTTPException, Security
+from fastapi import Depends, APIRouter, HTTPException, Security, Response
 from sqlalchemy.orm import Session
 from starlette import status
 
@@ -105,3 +105,20 @@ def get_all_device_profile(db: Session = Depends(get_db),
                                                                 scopes=["tenant"])):
     profiles = db.query(models.DeviceProfile).filter(models.DeviceProfile.owner_id == current_user.user_id).all()
     return profiles
+
+
+@router.delete("/{profile_id}", status_code=status.HTTP_200_OK)
+def delete_device_profile(profile_id: UUID, db: Session = Depends(get_db),
+                current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
+    profile = db.query(models.DeviceProfile).filter(models.DeviceProfile.profile_id == profile_id)
+    if profile.first() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Profile not found")
+    if profile.first().owner_id != current_user.user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You must be the owner of this entity to delete")
+    
+    profile.delete(synchronize_session=False)
+    db.commit()
+    
+    return Response(status_code=200, content="Successfully deleted device profile")

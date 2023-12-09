@@ -1,9 +1,11 @@
 from typing import List
 from uuid import UUID
 import json
+import datetime
 
 from fastapi import Depends, APIRouter, HTTPException, Security, Response
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from starlette import status
 
 from .. import schemas, models, oauth2
@@ -32,14 +34,14 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
     return new_farm
 
 
-@router.get("/all")
+@router.get("/all", response_model=List[schemas.FarmResponse])
 def get_all_farm(db: Session = Depends(get_db),
                  current_user: models.User = Security(oauth2.get_current_user,
                                                       scopes=["tenant", "customer"])):
     if current_user.role == "tenant":
         farms = db.query(models.Farm).filter(models.Farm.owner_id == current_user.user_id).all()
     elif current_user.role == "customer":
-        farms = db.query(models.Farm).filter(models.Farm.assigned_customer == current_user.user_id).first()
+        farms = db.query(models.Farm).filter(models.Farm.assigned_customer == current_user.user_id).all()
     return farms
 
 
@@ -49,10 +51,14 @@ def get_farm_by_id(farm_id: UUID, db: Session = Depends(get_db),
                                                         scopes=["tenant", "customer"])):
     farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id).first()
     
-    if not ((current_user.role == "customer" and (current_user.user_id in farm.assigned_customers))
+    if not farm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Farm not found")
+        
+    if not ((current_user.role == "customer" and (current_user.user_id==farm.assigned_customer))
         or (current_user.role == "tenant" and farm.owner_id == current_user.user_id)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Farm not found or no access")
+                            detail="You have no access to this farm")
         
     return farm
     
@@ -106,19 +112,134 @@ def assign_farm_to_customer(farm_id: UUID, customer_id: UUID, db: Session = Depe
         return Response(status_code=status.HTTP_200_OK,
                         content=json.dumps({"detail": "Successfully unassigned farm from customer"}),
                         media_type="application/json")
-    
-    
-@router.get("/{farm_id}/threshold")
-def get_all_threshold(farm_id: UUID, db: Session = Depends(get_db),
-                     current_user: models.User = Security(oauth2.get_current_user,
+
+
+@router.get("/{farm_id}/keys/all", response_model=List[schemas.TSKeyBase])
+def get_all_farm_keys(farm_id: UUID, db: Session = Depends(get_db),
+                      current_user: models.User = Security(oauth2.get_current_user,
                                                           scopes=["tenant", "customer"])):
-    pass
+    if current_user.role == 'tenant':
+        farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id, 
+                                            models.Farm.owner_id == current_user.user_id).first()
+    else:
+        farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id, 
+                                            models.Farm.assigned_customer == current_user.user_id).first()
+    if not farm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Farm not found")
+    return farm.farm_keys
+    
+    
+@router.get("/{farm_id}/threshold/all")
+def get_thresholds_of_farm(farm_id: UUID, db: Session = Depends(get_db),
+                           current_user: models.User = Security(oauth2.get_current_user,
+                                                                  scopes=["tenant", "customer"])):
+    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
+    
+    thresholds = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id).all()
+
+    return thresholds
     
     
 @router.post("/{farm_id}/threshold/{key}")
-def set_threshold_on_key_name(farm_id: UUID, key: str, db: Session = Depends(get_db),
+def set_farm_threshold_on_key(farm_id: UUID, key: str,
+                              max_value: float,
+                              min_value: float,
+                              db: Session = Depends(get_db),
                               current_user: models.User = Security(oauth2.get_current_user,
-                                                                   scopes=["tenant", "customer"])):
-    pass
+                                                              scopes=["tenant", "customer"])):
+    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
+    valid_keys = [key.ts_key for key in farm.farm_keys]
     
+    if key not in valid_keys:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Invalid farm key")
     
+    if min_value >= max_value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Max value must be larger than min value")
+     
+    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
+                                                              models.Threshold.key==key).first()
+    if existing_threshold:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Threshold for the specified farm and key already exists, use update threshold instead.")
+    
+        
+    new_threshold = models.Threshold(farm_id=farm_id, key=key,
+                                     threshold_max=max_value, threshold_min=min_value,
+                                     modified_by=current_user.user_id)
+    
+    db.add(new_threshold)
+    db.commit()
+    db.refresh(new_threshold)
+
+    return new_threshold
+
+
+@router.put("/{farm_id}/threshold/{key}")
+def update_farm_threshold_on_key(farm_id: UUID, key: str,
+                                 new_max_value: float = None,
+                                 new_min_value: float = None,
+                                 db: Session = Depends(get_db),
+                                 current_user: models.User = Security(oauth2.get_current_user,
+                                                                  scopes=["tenant", "customer"])):
+    
+    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
+                                                           models.Threshold.key==key).first()
+    
+    if not existing_threshold:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Threshold not found for the specified farm and key")
+        
+    if new_max_value is None and new_min_value is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Please provide at least one threshold value")
+        
+    elif new_min_value is not None and new_max_value is not None and new_min_value >= new_max_value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Max value must be larger than min value")
+        
+    elif (new_min_value is not None 
+          and new_max_value is None 
+          and existing_threshold.threshold_max is not None 
+          and new_min_value >= existing_threshold.threshold_max):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="New min value cannot be larger than the existing max value")
+        
+    elif (new_max_value is not None 
+          and new_min_value is None 
+          and existing_threshold.threshold_min is not None 
+          and new_max_value <= existing_threshold.threshold_min):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="New max value cannot be larger than the existing min value")
+    
+    existing_threshold.threshold_max = new_max_value if new_max_value is not None else existing_threshold.threshold_max
+    existing_threshold.threshold_min = new_min_value if new_min_value is not None else existing_threshold.threshold_min
+    existing_threshold.modified_by = current_user.user_id
+    existing_threshold.modified_at = datetime.datetime.now()
+    
+    db.commit()
+    db.refresh(existing_threshold)
+
+    return existing_threshold
+
+
+@router.delete("/{farm_id}/threshold/{key}")
+def delete_farm_threshold_with_key(farm_id: UUID, key: str,
+                                   db: Session = Depends(get_db),
+                                   current_user: models.User = Security(oauth2.get_current_user,
+                                                                 scopes=["tenant", "customer"])):
+    
+    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
+    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
+                                                           models.Threshold.key==key)
+    if not existing_threshold.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail={"Threshold not found for the specified farm and key"})
+    
+    existing_threshold.delete(synchronize_session=False)
+    
+    db.commit()
+
+    return Response(status_code=200, content="Successfully deleted threshold")

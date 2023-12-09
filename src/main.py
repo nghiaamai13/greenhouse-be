@@ -1,10 +1,9 @@
 from fastapi import FastAPI
-from uuid import uuid4
 
 from . import models, utils
 from .database import SessionLocal
 from .database import engine
-from .route import device, user, auth, farm
+from .route import device, user, auth, farm, telemetry
 
 app = FastAPI(
     title="Greenhouse",
@@ -18,7 +17,7 @@ app.include_router(device.router)
 app.include_router(user.router)
 app.include_router(auth.router)
 app.include_router(farm.router)
-
+app.include_router(telemetry.router)
 
 @app.on_event("startup")
 def create_admin():

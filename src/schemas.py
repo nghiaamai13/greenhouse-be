@@ -29,6 +29,7 @@ class UserResponse(BaseModel):
 
 class FarmBase(BaseModel):
     name: str
+    description: Optional[str] = None
 
 
 class FarmCreate(FarmBase):
@@ -40,6 +41,10 @@ class FarmResponse(FarmBase):
     created_at: datetime
     owner_id: UUID
     assigned_customer: Optional[UUID] = None
+
+
+class TSKeyBase(BaseModel):
+    ts_key: str
 
 class DeviceProfileBase(BaseModel):
     name: str
@@ -60,6 +65,7 @@ class DeviceProfileResponse(DeviceProfileBase):
 
 class DeviceBase(BaseModel):
     name: str
+    label: Optional[str] = None
     is_gateway: bool = False
 
 
