@@ -22,7 +22,6 @@ class User(Base):
         UniqueConstraint('user_id', 'created_by'),
     )
     
-    
 class TimeSeriesKey(Base):
     __tablename__ = 'ts_keys'
     ts_key = Column(String, primary_key=True, nullable=False)
@@ -34,12 +33,13 @@ class Farm(Base):
     farm_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     descriptions = Column(String(250))
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)    
     assigned_customer = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
-    
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    owner = relationship('User', foreign_keys=[owner_id], primaryjoin="Farm.owner_id == User.user_id")
+    customer = relationship('User', foreign_keys=[assigned_customer], primaryjoin="Farm.assigned_customer == User.user_id")
+
     farm_keys = relationship('TimeSeriesKey', secondary='key_usages')
-    
     
 key_usages = Table('key_usages', Base.metadata,
     Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),

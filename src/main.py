@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import models, utils
 from .database import SessionLocal
@@ -9,6 +10,16 @@ app = FastAPI(
     title="Greenhouse",
     description="API for greenhouse project",
     version="0.1.0"
+)
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 #models.Base.metadata.create_all(bind=engine)

@@ -29,19 +29,20 @@ class UserResponse(BaseModel):
 
 class FarmBase(BaseModel):
     name: str
-    description: Optional[str] = None
+    descriptions: Optional[str] = None
 
 
 class FarmCreate(FarmBase):
-    pass
-
+    assigned_customer: Optional[UUID] = None
 
 class FarmResponse(FarmBase):
     farm_id: UUID
     created_at: datetime
-    owner_id: UUID
-    assigned_customer: Optional[UUID] = None
+    descriptions: Optional[str] = None
+    customer: Optional[UserResponse] = None
 
+    owner: UserResponse
+    
 
 class TSKeyBase(BaseModel):
     ts_key: str
@@ -76,6 +77,7 @@ class DeviceCreate(DeviceBase):
 
 class DeviceResponse(DeviceBase):
     device_id: UUID
+    label: Optional[str] = None
     created_at: datetime
     farm: FarmResponse
     device_profile: DeviceProfileResponse
@@ -87,9 +89,11 @@ class DeviceResponse(DeviceBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    scope: str
 
 
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[str] = None
-    scope: str
+    scope: str 
+    

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 import json
 import datetime
@@ -7,12 +7,14 @@ from fastapi import Depends, APIRouter, HTTPException, Security, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from starlette import status
+from sqlalchemy import desc
 
 from .. import schemas, models, oauth2
 from ..database import get_db
+from .user import get_customer_by_id
 
 router = APIRouter(
-    prefix="/api/farm",
+    prefix="/api/farms",
     tags=["Farm"]
 )
 
@@ -25,7 +27,10 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
     farm_user_ids = [f.owner_id for f in farm_with_name]
     if current_user.user_id in farm_user_ids:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A farm with name {farm.name} already exists")
-        
+    
+    if not (farm.assigned_customer == "" or farm.assigned_customer is None):
+        get_customer_by_id(farm.assigned_customer, db, current_user)
+    
     new_farm = models.Farm(owner_id=current_user.user_id, **farm.model_dump())
     db.add(new_farm)
     db.commit()
@@ -34,14 +39,18 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
     return new_farm
 
 
-@router.get("/all", response_model=List[schemas.FarmResponse])
-def get_all_farm(db: Session = Depends(get_db),
-                 current_user: models.User = Security(oauth2.get_current_user,
+@router.get("/", response_model=List[schemas.FarmResponse])
+def get_list_farm(db: Session = Depends(get_db),
+                  current_user: models.User = Security(oauth2.get_current_user,
                                                       scopes=["tenant", "customer"])):
     if current_user.role == "tenant":
-        farms = db.query(models.Farm).filter(models.Farm.owner_id == current_user.user_id).all()
+        query = db.query(models.Farm).filter(models.Farm.owner_id == current_user.user_id)
     elif current_user.role == "customer":
-        farms = db.query(models.Farm).filter(models.Farm.assigned_customer == current_user.user_id).all()
+        query = db.query(models.Farm).filter(models.Farm.assigned_customer == current_user.user_id)
+        
+    query = query.order_by(desc(models.Farm.created_at))
+        
+    farms = query.all()
     return farms
 
 
@@ -57,11 +66,30 @@ def get_farm_by_id(farm_id: UUID, db: Session = Depends(get_db),
         
     if not ((current_user.role == "customer" and (current_user.user_id==farm.assigned_customer))
         or (current_user.role == "tenant" and farm.owner_id == current_user.user_id)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="You have no access to this farm")
         
     return farm
     
+
+@router.patch("/{farm_id}")
+def update_farm(farm_id: UUID, new_farm: schemas.FarmCreate, db: Session = Depends(get_db),
+                current_user: models.User = Security(oauth2.get_current_user,
+                                                    scopes=["tenant"])):
+    existing_farm = get_farm_by_id(farm_id, db, current_user)
+    if current_user.role == "tenant":
+        for field, value in new_farm.dict().items():
+            setattr(existing_farm, field, value)
+
+        db.commit()
+        db.refresh(existing_farm)
+
+        return existing_farm
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You have no permission to edit this farm")
+      
+
    
 @router.delete("/{farm_id}", status_code=status.HTTP_200_OK)
 def delete_farm(farm_id: UUID, db: Session = Depends(get_db),
@@ -96,26 +124,25 @@ def assign_farm_to_customer(farm_id: UUID, customer_id: UUID, db: Session = Depe
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Customer not found")
 
-    if farm.assigned_customer is None:
-        farm.assigned_customer = customer.user_id
-        db.commit()
-        return Response(status_code=status.HTTP_200_OK, 
-                        content=json.dumps({"detail": "Successfully assigned farm to customer"}),
-                        media_type="application/json")
+    farm.assigned_customer = customer.user_id
+    db.commit()
+    return Response(status_code=status.HTTP_200_OK, 
+                    content=json.dumps({"detail": "Successfully assigned farm to customer"}),
+                    media_type="application/json")
     
-    if farm.assigned_customer is not None and farm.assigned_customer != customer.user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Farm assigned to other customer")
-    else:
-        farm.assigned_customer = None
-        db.commit()
-        return Response(status_code=status.HTTP_200_OK,
-                        content=json.dumps({"detail": "Successfully unassigned farm from customer"}),
-                        media_type="application/json")
+    # if farm.assigned_customer is not None and farm.assigned_customer != customer.user_id:
+    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+    #                         detail="Farm assigned to other customer")
+    # else:
+    #     farm.assigned_customer = None
+    #     db.commit()
+    #     return Response(status_code=status.HTTP_200_OK,
+    #                     content=json.dumps({"detail": "Successfully unassigned farm from customer"}),
+    #                     media_type="application/json")
 
 
-@router.get("/{farm_id}/keys/all", response_model=List[schemas.TSKeyBase])
-def get_all_farm_keys(farm_id: UUID, db: Session = Depends(get_db),
+@router.get("/{farm_id}/keys", response_model=List[schemas.TSKeyBase])
+def get_list_farm_keys(farm_id: UUID, db: Session = Depends(get_db),
                       current_user: models.User = Security(oauth2.get_current_user,
                                                           scopes=["tenant", "customer"])):
     if current_user.role == 'tenant':
@@ -130,7 +157,7 @@ def get_all_farm_keys(farm_id: UUID, db: Session = Depends(get_db),
     return farm.farm_keys
     
     
-@router.get("/{farm_id}/threshold/all")
+@router.get("/{farm_id}/thresholds")
 def get_thresholds_of_farm(farm_id: UUID, db: Session = Depends(get_db),
                            current_user: models.User = Security(oauth2.get_current_user,
                                                                   scopes=["tenant", "customer"])):
