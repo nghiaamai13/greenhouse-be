@@ -33,7 +33,7 @@ def get_current_user(security_scopes: SecurityScopes, token: str = Depends(oauth
     ) 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: int = payload.get("username")
+        username: str = payload.get("username")
         user_id: str = payload.get("user_id")
         if username is None:
             raise credentials_exception
