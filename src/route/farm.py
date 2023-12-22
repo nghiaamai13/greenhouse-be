@@ -4,7 +4,8 @@ import json
 import datetime
 
 from fastapi import Depends, APIRouter, HTTPException, Security, Response
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
 from starlette import status
 from sqlalchemy import desc
@@ -76,15 +77,29 @@ def get_farm_by_id(farm_id: UUID, db: Session = Depends(get_db),
 def update_farm(farm_id: UUID, new_farm: schemas.FarmCreate, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user,
                                                     scopes=["tenant"])):
-    existing_farm = get_farm_by_id(farm_id, db, current_user)
+    farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id)
+    
+    if not farm.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Farm not found")
+        
+    if not ((current_user.role == "customer" and (current_user.user_id==farm.assigned_customer))
+        or (current_user.role == "tenant" and farm.first().owner_id == current_user.user_id)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You have no access to this farm")
+    
+    update_data = {
+        "name": new_farm.name,
+        "descriptions": new_farm.descriptions,
+        "assigned_customer": new_farm.customer.user_id if new_farm.customer else None
+    }
+    print(update_data)
+    
     if current_user.role == "tenant":
-        for field, value in new_farm.dict().items():
-            setattr(existing_farm, field, value)
+        farm.update(update_data, synchronize_session=False)
 
         db.commit()
-        db.refresh(existing_farm)
-
-        return existing_farm
+        return Response(status_code=200, content="Successfully updated farm")
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                         detail="You have no permission to edit this farm")
@@ -270,3 +285,46 @@ def delete_farm_threshold_with_key(farm_id: UUID, key: str,
     db.commit()
 
     return Response(status_code=200, content="Successfully deleted threshold")
+
+@router.get("/{farm_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
+def get_latest_farm_telemetry(farm_id: UUID, db: Session = Depends(get_db), 
+                              current_user: models.User = Security(oauth2.get_current_user, 
+                                                                   scopes=["tenant", "customer"])):
+    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
+    
+    # if current_user.role == "tenant":
+    #     devices = (db.query(models.Device)
+    #                         .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
+    #                         .filter(models.Farm.owner_id == current_user.user_id).all())
+    
+    # telemetry = db.query(models.TimeSeries).join(models.Device,
+    #                                              models.TimeSeries.device_id == models.Device.device_id,
+    #                                              isouter=True).filter(models.Device.farm_id == farm_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
+    
+    
+    cte = (
+        db.query(
+            models.TimeSeries.key,
+            models.TimeSeries.value,
+            models.Device.farm_id,
+            models.Device.device_id,
+            models.TimeSeries.timestamp,
+            func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
+        )
+        .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
+        .cte()
+    )
+
+# Main query to get the latest values for each key
+    query = (
+        db.query(
+            cte.c.key,
+            cte.c.value,
+            cte.c.device_id,
+            cte.c.timestamp
+        )
+        .filter(cte.c.row_num == 1)
+    )
+
+    result = query.all()
+    return result

@@ -30,10 +30,14 @@ class UserResponse(BaseModel):
 class FarmBase(BaseModel):
     name: str
     descriptions: Optional[str] = None
+    assigned_customer: Optional[UUID] = None
 
 
 class FarmCreate(FarmBase):
-    assigned_customer: Optional[UUID] = None
+    customer: Optional[UserResponse] = None
+    
+    class Config:
+        from_attributes = True
 
 class FarmResponse(FarmBase):
     farm_id: UUID
@@ -42,6 +46,8 @@ class FarmResponse(FarmBase):
     customer: Optional[UserResponse] = None
 
     owner: UserResponse
+    class Config:
+        from_attributes = True
     
 
 class TSKeyBase(BaseModel):
@@ -91,7 +97,11 @@ class Token(BaseModel):
     token_type: str
     scope: str
 
-
+class TelemetryBase(BaseModel):
+    key: str
+    value: float
+    timestamp: datetime
+    device_id: UUID
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[str] = None

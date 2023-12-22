@@ -60,7 +60,7 @@ def get_list_devices(db: Session = Depends(get_db),
     return devices
 
 
-@router.get("/device/{device_id}", response_model=schemas.DeviceResponse)
+@router.get("/devices/{device_id}", response_model=schemas.DeviceResponse)
 def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
                      current_user: models.User = Depends(oauth2.get_current_user)):
     try:
@@ -80,7 +80,7 @@ def get_device_by_id(device_id: UUID, db: Session = Depends(get_db),
     
 
 
-@router.post("/device_profile", status_code=status.HTTP_201_CREATED,
+@router.post("/device_profiles", status_code=status.HTTP_201_CREATED,
              response_model=schemas.DeviceProfileResponse)
 def create_device_profile(profile: schemas.DeviceProfileCreate, db: Session = Depends(get_db),
                           current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
@@ -107,7 +107,7 @@ def get_list_device_profile(db: Session = Depends(get_db),
     return profiles
 
 
-@router.delete("/device_profiles/{profile_id}", status_code=status.HTTP_200_OK)
+@router.delete("/device_profile/{profile_id}", status_code=status.HTTP_200_OK)
 def delete_device_profile(profile_id: UUID, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
     profile = db.query(models.DeviceProfile).filter(models.DeviceProfile.profile_id == profile_id)
