@@ -29,10 +29,15 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
     if current_user.user_id in farm_user_ids:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A farm with name {farm.name} already exists")
     
-    if not (farm.assigned_customer == "" or farm.assigned_customer is None):
-        get_customer_by_id(farm.assigned_customer, db, current_user)
+    if farm.customer is not None:
+        get_customer_by_id(farm.customer.user_id, db, current_user)
+        
+    new_farm = models.Farm(owner_id=current_user.user_id,
+                           name=farm.name,
+                           descriptions=farm.descriptions,
+                           assigned_customer=farm.customer.user_id if farm.customer else None)
+        
     
-    new_farm = models.Farm(owner_id=current_user.user_id, **farm.model_dump())
     db.add(new_farm)
     db.commit()
     db.refresh(new_farm)
