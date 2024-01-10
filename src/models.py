@@ -1,10 +1,8 @@
 import uuid
-
 from sqlalchemy import (Boolean, Column, Integer, String, Float, Table,
                         func, DateTime, ForeignKey, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
 from .database import Base
 
 
@@ -16,8 +14,6 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     role = Column(String(50), default="customer", nullable=False)
     created_by = Column(UUID(as_uuid=True), nullable=False)
-
-    # Add a unique constraint on the combination of username and tenant_id
     __table_args__ = (
         UniqueConstraint('user_id', 'created_by'),
     )
@@ -39,18 +35,38 @@ class Farm(Base):
     owner = relationship('User', foreign_keys=[owner_id], primaryjoin="Farm.owner_id == User.user_id")
     customer = relationship('User', foreign_keys=[assigned_customer], primaryjoin="Farm.assigned_customer == User.user_id")
 
-    farm_keys = relationship('TimeSeriesKey', secondary='key_usages')
+#     farm_keys = relationship('TimeSeriesKey', secondary='key_usages')
+    
+# key_usages = Table('key_usages', Base.metadata,
+#     Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
+#     Column('ts_key', String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE")),
+#     UniqueConstraint('farm_id', 'ts_key')
+# )
+
+
+class Asset(Base):
+    __tablename__ = 'assets'
+    asset_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    type = Column(String(100), nullable=False)
+    farm_id = Column(UUID(as_uuid=True), ForeignKey("farms.farm_id", ondelete="CASCADE"), nullable=False)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)    
+
+    asset_keys = relationship('TimeSeriesKey', secondary='key_usages')
+    farm = relationship('Farm')
     
 key_usages = Table('key_usages', Base.metadata,
-    Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
+    Column('asset_id', UUID(as_uuid=True), ForeignKey('assets.asset_id', ondelete="CASCADE")),
     Column('ts_key', String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE")),
-    UniqueConstraint('farm_id', 'ts_key')
-)
+    UniqueConstraint('asset_id', 'ts_key')
+)   
+
 
 class Threshold(Base):
     __tablename__ = 'thresholds'
     threshold_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    farm_id = Column(UUID(as_uuid=True), ForeignKey("farms.farm_id", ondelete="CASCADE"), nullable=False)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.asset_id", ondelete="CASCADE"), nullable=False)
     key = Column(String, ForeignKey("ts_keys.ts_key", ondelete="CASCADE"), nullable=False)
     # TODO: change the threshold value types when updating ts_value types
     threshold_max = Column(Float)
@@ -58,7 +74,7 @@ class Threshold(Base):
     modified_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     modified_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     __table_args__ = (
-        UniqueConstraint('farm_id', 'key', name='uq_farm_key_pair'),
+        UniqueConstraint('asset_id', 'key', name='uq_farm_key_pair'),
     )
 
 class DeviceProfile(Base):
@@ -76,11 +92,11 @@ class Device(Base):
     label = Column(String(100))
     is_gateway = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    farm_id = Column(UUID(as_uuid=True), ForeignKey("farms.farm_id", ondelete="CASCADE"), nullable=False)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.asset_id", ondelete="CASCADE"), nullable=False)
     device_profile_id = Column(UUID(as_uuid=True), ForeignKey('device_profiles.profile_id', ondelete="CASCADE"),
                                nullable=False)
 
-    farm = relationship("Farm")
+    asset = relationship("Asset")
     device_profile = relationship("DeviceProfile")
 
 

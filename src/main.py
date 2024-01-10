@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import models, utils
 from .database import SessionLocal
 from .database import engine
-from .route import device, user, auth, farm, telemetry
+from .route import device, user, auth, farm, telemetry, asset
 
 app = FastAPI(
     title="Greenhouse",
@@ -24,11 +24,13 @@ app.add_middleware(
 
 #models.Base.metadata.create_all(bind=engine)
 
-app.include_router(device.router)
-app.include_router(user.router)
 app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(farm.router)
+app.include_router(asset.router)
+app.include_router(device.router)
 app.include_router(telemetry.router)
+
 
 @app.on_event("startup")
 def create_admin():

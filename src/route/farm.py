@@ -3,7 +3,7 @@ from uuid import UUID
 import json
 import datetime
 
-from fastapi import Depends, APIRouter, HTTPException, Security, Response
+from fastapi import Depends, APIRouter, HTTPException, Security, Response, Body, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
@@ -46,17 +46,36 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
 
 
 @router.get("/", response_model=List[schemas.FarmResponse])
-def get_list_farm(db: Session = Depends(get_db),
-                  current_user: models.User = Security(oauth2.get_current_user,
-                                                      scopes=["tenant", "customer"])):
+def get_list_farm(
+    db: Session = Depends(get_db),
+    current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant", "customer"]),
+    _order: str = Query("asc", description="Sorting order: asc or desc", regex="^(asc|desc)$"),
+    _sort: str = Query(None, description="Order by a specific field", regex="^[a-zA-Z_]+$")
+):
+    order_mapping = {
+        "name": models.Farm.name,
+        "descriptions": models.Farm.descriptions,
+        "created_at": models.Farm.created_at,
+        "customer": models.User.username,
+    }
+
+    default_order_column = models.Farm.created_at
+    order_column = order_mapping.get(_sort, default_order_column)
+
+    query = db.query(models.Farm).join(models.User, models.Farm.assigned_customer == models.User.user_id)
+
     if current_user.role == "tenant":
-        query = db.query(models.Farm).filter(models.Farm.owner_id == current_user.user_id)
+        query = query.filter(models.Farm.owner_id == current_user.user_id)
     elif current_user.role == "customer":
-        query = db.query(models.Farm).filter(models.Farm.assigned_customer == current_user.user_id)
-        
-    query = query.order_by(desc(models.Farm.created_at))
-        
+        query = query.filter(models.Farm.assigned_customer == current_user.user_id)
+
+    if _order == "asc":
+        query = query.order_by(order_column)
+    else:
+        query = query.order_by(order_column.desc())
+
     farms = query.all()
+
     return farms
 
 
@@ -82,16 +101,8 @@ def get_farm_by_id(farm_id: UUID, db: Session = Depends(get_db),
 def update_farm(farm_id: UUID, new_farm: schemas.FarmCreate, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user,
                                                     scopes=["tenant"])):
+    get_farm_by_id(farm_id, db, current_user)
     farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id)
-    
-    if not farm.first():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Farm not found")
-        
-    if not ((current_user.role == "customer" and (current_user.user_id==farm.assigned_customer))
-        or (current_user.role == "tenant" and farm.first().owner_id == current_user.user_id)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="You have no access to this farm")
     
     update_data = {
         "name": new_farm.name,
@@ -100,27 +111,20 @@ def update_farm(farm_id: UUID, new_farm: schemas.FarmCreate, db: Session = Depen
     }
     print(update_data)
     
-    if current_user.role == "tenant":
-        farm.update(update_data, synchronize_session=False)
+    farm.update(update_data, synchronize_session=False)
 
-        db.commit()
-        return Response(status_code=200, content="Successfully updated farm")
+    db.commit()
+    return Response(status_code=200, content="Successfully updated farm")
 
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You have no permission to edit this farm")
+
       
-
-   
 @router.delete("/{farm_id}", status_code=status.HTTP_200_OK)
 def delete_farm(farm_id: UUID, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
     farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id)
-    if farm.first() is None:
+    if farm.first() is None or farm.first().owner_id != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Farm not found")
-    if farm.first().owner_id != current_user.user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="You must be the owner of this entity to delete")
     
     farm.delete(synchronize_session=False)
     db.commit()
@@ -149,187 +153,79 @@ def assign_farm_to_customer(farm_id: UUID, customer_id: UUID, db: Session = Depe
     return Response(status_code=status.HTTP_200_OK, 
                     content=json.dumps({"detail": "Successfully assigned farm to customer"}),
                     media_type="application/json")
-    
-    # if farm.assigned_customer is not None and farm.assigned_customer != customer.user_id:
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-    #                         detail="Farm assigned to other customer")
-    # else:
-    #     farm.assigned_customer = None
-    #     db.commit()
-    #     return Response(status_code=status.HTTP_200_OK,
-    #                     content=json.dumps({"detail": "Successfully unassigned farm from customer"}),
-    #                     media_type="application/json")
 
 
-@router.get("/{farm_id}/keys", response_model=List[schemas.TSKeyBase])
-def get_list_farm_keys(farm_id: UUID, db: Session = Depends(get_db),
-                      current_user: models.User = Security(oauth2.get_current_user,
-                                                          scopes=["tenant", "customer"])):
-    if current_user.role == 'tenant':
-        farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id, 
-                                            models.Farm.owner_id == current_user.user_id).first()
-    else:
-        farm = db.query(models.Farm).filter(models.Farm.farm_id == farm_id, 
-                                            models.Farm.assigned_customer == current_user.user_id).first()
-    if not farm:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Farm not found")
-    return farm.farm_keys
-    
-    
-@router.get("/{farm_id}/thresholds")
-def get_thresholds_of_farm(farm_id: UUID, db: Session = Depends(get_db),
-                           current_user: models.User = Security(oauth2.get_current_user,
-                                                                  scopes=["tenant", "customer"])):
-    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
-    
-    thresholds = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id).all()
-
-    return thresholds
-    
-    
-@router.post("/{farm_id}/threshold/{key}")
-def set_farm_threshold_on_key(farm_id: UUID, key: str,
-                              max_value: float,
-                              min_value: float,
-                              db: Session = Depends(get_db),
-                              current_user: models.User = Security(oauth2.get_current_user,
+@router.get("/{farm_id}/assets/greenhouses", response_model=List[schemas.AssetResponse])
+def get_list_farm_asset_greenhouse(farm_id: UUID, db: Session = Depends(get_db),
+                         current_user: models.User = Security(oauth2.get_current_user,
                                                               scopes=["tenant", "customer"])):
-    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
-    valid_keys = [key.ts_key for key in farm.farm_keys]
+    farm = get_farm_by_id(farm_id, db, current_user)
+    greenhouses = db.query(models.Asset).filter(models.Asset.farm_id == farm_id, models.Asset.type == "Greenhouse").all()
     
-    if key not in valid_keys:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Invalid farm key")
-    
-    if min_value >= max_value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Max value must be larger than min value")
-     
-    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
-                                                              models.Threshold.key==key).first()
-    if existing_threshold:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="Threshold for the specified farm and key already exists, use update threshold instead.")
-    
-        
-    new_threshold = models.Threshold(farm_id=farm_id, key=key,
-                                     threshold_max=max_value, threshold_min=min_value,
-                                     modified_by=current_user.user_id)
-    
-    db.add(new_threshold)
-    db.commit()
-    db.refresh(new_threshold)
-
-    return new_threshold
+    return greenhouses
 
 
-@router.put("/{farm_id}/threshold/{key}")
-def update_farm_threshold_on_key(farm_id: UUID, key: str,
-                                 new_max_value: float = None,
-                                 new_min_value: float = None,
-                                 db: Session = Depends(get_db),
-                                 current_user: models.User = Security(oauth2.get_current_user,
-                                                                  scopes=["tenant", "customer"])):
+@router.get("/{farm_id}/assets/outdoor_fields", response_model=List[schemas.AssetResponse])
+def get_list_farm_asset_outdoor_field(farm_id: UUID, db: Session = Depends(get_db),
+                         current_user: models.User = Security(oauth2.get_current_user,
+                                                              scopes=["tenant", "customer"])):
+    farm = get_farm_by_id(farm_id, db, current_user)
+    outdoor_fields = db.query(models.Asset).filter(models.Asset.farm_id == farm_id, models.Asset.type == "Outdoor Field").all()
     
-    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
-                                                           models.Threshold.key==key).first()
-    
-    if not existing_threshold:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Threshold not found for the specified farm and key")
-        
-    if new_max_value is None and new_min_value is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Please provide at least one threshold value")
-        
-    elif new_min_value is not None and new_max_value is not None and new_min_value >= new_max_value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Max value must be larger than min value")
-        
-    elif (new_min_value is not None 
-          and new_max_value is None 
-          and existing_threshold.threshold_max is not None 
-          and new_min_value >= existing_threshold.threshold_max):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="New min value cannot be larger than the existing max value")
-        
-    elif (new_max_value is not None 
-          and new_min_value is None 
-          and existing_threshold.threshold_min is not None 
-          and new_max_value <= existing_threshold.threshold_min):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="New max value cannot be larger than the existing min value")
-    
-    existing_threshold.threshold_max = new_max_value if new_max_value is not None else existing_threshold.threshold_max
-    existing_threshold.threshold_min = new_min_value if new_min_value is not None else existing_threshold.threshold_min
-    existing_threshold.modified_by = current_user.user_id
-    existing_threshold.modified_at = datetime.datetime.now()
-    
-    db.commit()
-    db.refresh(existing_threshold)
+    return outdoor_fields
 
-    return existing_threshold
+@router.get("/{farm_id}/devices", response_model=List[schemas.DeviceResponse])
+def get_list_farm_devices(farm_id: UUID, db: Session = Depends(get_db),
+                          current_user: models.User = Security(oauth2.get_current_user,
+                                                               scopes=["tenant", "customer"])):
+    farm = get_farm_by_id(farm_id, db, current_user)
+    devices = (db.query(models.Device).
+                  join(models.Asset, models.Device.asset_id == models.Asset.asset_id,
+                       isouter=True).
+                  filter(models.Asset.farm_id == farm_id).all())
+    
+    return devices
+    
 
+# @router.get("/{farm_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
+# def get_latest_farm_telemetry(farm_id: UUID, db: Session = Depends(get_db), 
+#                               current_user: models.User = Security(oauth2.get_current_user, 
+#                                                                    scopes=["tenant", "customer"])):
+#     farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
+    
+#     # if current_user.role == "tenant":
+#     #     devices = (db.query(models.Device)
+#     #                         .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
+#     #                         .filter(models.Farm.owner_id == current_user.user_id).all())
+    
+#     # telemetry = db.query(models.TimeSeries).join(models.Device,
+#     #                                              models.TimeSeries.device_id == models.Device.device_id,
+#     #                                              isouter=True).filter(models.Device.farm_id == farm_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
+    
+    
+#     cte = (
+#         db.query(
+#             models.TimeSeries.key,
+#             models.TimeSeries.value,
+#             models.Device.farm_id,
+#             models.Device.device_id,
+#             models.TimeSeries.timestamp,
+#             func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
+#         )
+#         .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
+#         .cte()
+#     )
 
-@router.delete("/{farm_id}/threshold/{key}")
-def delete_farm_threshold_with_key(farm_id: UUID, key: str,
-                                   db: Session = Depends(get_db),
-                                   current_user: models.User = Security(oauth2.get_current_user,
-                                                                 scopes=["tenant", "customer"])):
-    
-    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
-    existing_threshold = db.query(models.Threshold).filter(models.Threshold.farm_id==farm_id,
-                                                           models.Threshold.key==key)
-    if not existing_threshold.first():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail={"Threshold not found for the specified farm and key"})
-    
-    existing_threshold.delete(synchronize_session=False)
-    
-    db.commit()
+# # Main query to get the latest values for each key
+#     query = (
+#         db.query(
+#             cte.c.key,
+#             cte.c.value,
+#             cte.c.device_id,
+#             cte.c.timestamp
+#         )
+#         .filter(cte.c.row_num == 1)
+#     )
 
-    return Response(status_code=200, content="Successfully deleted threshold")
-
-@router.get("/{farm_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
-def get_latest_farm_telemetry(farm_id: UUID, db: Session = Depends(get_db), 
-                              current_user: models.User = Security(oauth2.get_current_user, 
-                                                                   scopes=["tenant", "customer"])):
-    farm: models.Farm = get_farm_by_id(farm_id, db, current_user)
-    
-    # if current_user.role == "tenant":
-    #     devices = (db.query(models.Device)
-    #                         .join(models.Farm, models.Device.farm_id == models.Farm.farm_id, isouter=True)
-    #                         .filter(models.Farm.owner_id == current_user.user_id).all())
-    
-    # telemetry = db.query(models.TimeSeries).join(models.Device,
-    #                                              models.TimeSeries.device_id == models.Device.device_id,
-    #                                              isouter=True).filter(models.Device.farm_id == farm_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
-    
-    
-    cte = (
-        db.query(
-            models.TimeSeries.key,
-            models.TimeSeries.value,
-            models.Device.farm_id,
-            models.Device.device_id,
-            models.TimeSeries.timestamp,
-            func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
-        )
-        .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
-        .cte()
-    )
-
-# Main query to get the latest values for each key
-    query = (
-        db.query(
-            cte.c.key,
-            cte.c.value,
-            cte.c.device_id,
-            cte.c.timestamp
-        )
-        .filter(cte.c.row_num == 1)
-    )
-
-    result = query.all()
-    return result
+#     result = query.all()
+#     return result

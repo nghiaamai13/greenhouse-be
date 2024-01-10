@@ -7,8 +7,8 @@ from starlette import status
 from .. import models
 from ..database import get_db
 
-router = APIRouter(
-    prefix="/api/telemetry",
+router = APIRouter( 
+    prefix="/api",
     tags=["Telemetry"]
 )
 
@@ -16,7 +16,7 @@ router = APIRouter(
 def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                    data: dict = None):
     device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
-    current_farm = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id).first()
+    #current_farm = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id).first()
 
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
@@ -38,16 +38,16 @@ def add_ts(device: models.Device, key, value, db: Session):
         db.add(new_key)
         db.commit()
         db.refresh(new_key)
-        print(f"Inserted new key: {key} to the database")
+        print(f"Inserted new key: {key}")
         
     else:
         new_key = existing_key
     
-    current_farm = db.query(models.Farm).filter(models.Farm.farm_id == device.farm_id).first()
-    if new_key not in current_farm.farm_keys:
-        current_farm.farm_keys.append(new_key)
+    current_asset = db.query(models.Asset).filter(models.Asset.asset_id == device.asset_id).first()
+    if new_key not in current_asset.asset_keys:
+        current_asset.asset_keys.append(new_key)
         db.commit()
-        print(f"Added key: {key} on farm: {current_farm.farm_id}") 
+        print(f"Added key: '{key}' on asset: {current_asset.name} id: {current_asset.asset_id}") 
                 
     telemetry_data = models.TimeSeries(
         key=new_key.ts_key,
