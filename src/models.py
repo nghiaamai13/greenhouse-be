@@ -107,5 +107,5 @@ class TimeSeries(Base):
     ts_id = Column(Integer, primary_key=True)
     key = Column(String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE"), nullable=False)
     device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
-    
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    

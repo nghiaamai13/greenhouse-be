@@ -1,6 +1,8 @@
 import json
 from typing import List
 from uuid import UUID
+from sqlalchemy.orm import aliased
+from sqlalchemy import func
 
 from fastapi import Depends, APIRouter, HTTPException, Security, Response, Query
 from sqlalchemy.orm import Session
@@ -117,7 +119,6 @@ def update_device(device_id: UUID, new_device: schemas.DeviceCreate, db: Session
         "asset_id": new_device.asset_id,
         "device_profile_id": new_device.device_profile_id
     }
-    print(update_data)
     
     device.update(update_data, synchronize_session=False)
 
@@ -161,8 +162,6 @@ def create_device_profile(profile: schemas.DeviceProfileCreate, db: Session = De
     return new_profile
 
 
-from fastapi import Query
-
 @router.get("/device_profiles", response_model=List[schemas.DeviceProfileResponse])
 def get_list_device_profile(
     db: Session = Depends(get_db),
@@ -186,7 +185,6 @@ def get_list_device_profile(
     return profiles
 
 
-
 @router.delete("/device_profiles/{profile_id}", status_code=status.HTTP_200_OK)
 def delete_device_profile(profile_id: UUID, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant"])):
@@ -202,3 +200,36 @@ def delete_device_profile(profile_id: UUID, db: Session = Depends(get_db),
     db.commit()
     
     return Response(status_code=200, content="Successfully deleted device profile")
+
+
+@router.get("/devices/{device_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
+def get_latest_device_telemetry(device_id: UUID, db: Session = Depends(get_db), 
+                              current_user: models.User = Security(oauth2.get_current_user, 
+                                                                   scopes=["tenant", "customer"])):
+    device: models.Device = get_device_by_id(device_id, db, current_user)
+
+    ts_alias = aliased(models.TimeSeries)
+    
+    cte = (
+        db.query(
+            models.TimeSeries.key,
+            models.TimeSeries.device_id,
+            ts_alias.value,
+            ts_alias.timestamp,
+            func.row_number().over(
+                partition_by=models.TimeSeries.key,
+                order_by=models.TimeSeries.timestamp.desc()
+            ).label('row_num')
+        )
+        .join(ts_alias, models.TimeSeries.key == ts_alias.key)
+        .filter(models.TimeSeries.device_id == device_id)
+        .cte(name="latest_telemetry")
+    )
+
+    query = (
+        db.query(cte.c.key, cte.c.value, cte.c.timestamp, cte.c.device_id)
+        .filter(cte.c.row_num == 1)
+    )
+    print(query.all())
+
+    return query.all()

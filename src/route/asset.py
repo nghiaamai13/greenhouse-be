@@ -28,7 +28,7 @@ def create_asset(asset: schemas.AssetCreate,
     farm_query = db.query(models.Farm).filter(models.Farm.farm_id == asset.farm_id, models.Farm.owner_id == current_user.user_id)
     if farm_query.first().farm_id in farm_ids:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail=f"Asset with this name already exists in farm {farm_query.first().name}")
+                            detail=f"Asset with this name already exists in  {farm_query.first().name}")
     
     new_asset = models.Asset(owner_id=current_user.user_id, **asset.model_dump())
     db.add(new_asset)
@@ -50,7 +50,7 @@ def get_list_asset(
         "name": models.Asset.name,
         "type": models.Asset.type,
         "created_at": models.Asset.created_at,
-        "farm": models.Farm.name,
+        "": models.Farm.name,
         # Add more fields as needed
     }
 
@@ -68,7 +68,7 @@ def get_list_asset(
             .filter(models.Farm.assigned_customer == current_user.user_id)
         )
         
-    if _sort == "farm":
+    if _sort == "":
         assets_query = assets_query.join(models.Farm, models.Asset.farm_id == models.Farm.farm_id, isouter=True)
 
     if _order == "asc":
@@ -97,10 +97,23 @@ def get_asset_by_id(asset_id: UUID, db: Session = Depends(get_db),
     return asset
 
 @router.patch("/{asset_id}")
-def update_asset(asset_id: UUID, db: Session = Depends(get_db),
+def update_asset(asset_id: UUID, new_asset: schemas.AssetCreate, db: Session = Depends(get_db),
                 current_user: models.User = Security(oauth2.get_current_user,
                                                     scopes=["tenant"])):
-    pass
+    get_asset_by_id(asset_id, db, current_user)
+    asset = db.query(models.Asset).filter(models.Asset.asset_id == asset_id)
+    
+    
+    update_data = {
+        "name": new_asset.name,
+        "type": new_asset.type,
+        "farm_id": new_asset.farm_id
+    }
+    
+    asset.update(update_data, synchronize_session=False)
+
+    db.commit()
+    return Response(status_code=200, content="Successfully updated asset")
    
 @router.delete("/{asset_id}", status_code=status.HTTP_200_OK)
 def delete_asset(asset_id: UUID, db: Session = Depends(get_db),
@@ -168,19 +181,21 @@ def set_asset_threshold_on_key(asset_id: UUID, key: str,
     existing_threshold = db.query(models.Threshold).filter(models.Threshold.asset_id==asset_id,
                                                               models.Threshold.key==key).first()
     if existing_threshold:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="Threshold already exists, please update")
+        existing_threshold.threshold_max = threshold_max
+        existing_threshold.threshold_min = threshold_min
+        existing_threshold.modified_by = current_user.user_id
+        existing_threshold.modified_at = datetime.datetime.now()
     
+    else:    
+        new_threshold = models.Threshold(asset_id=asset_id, key=key,
+                                        threshold_max=threshold_max, threshold_min=threshold_min,
+                                        modified_by=current_user.user_id)
         
-    new_threshold = models.Threshold(asset_id=asset_id, key=key,
-                                     threshold_max=threshold_max, threshold_min=threshold_min,
-                                     modified_by=current_user.user_id)
+        db.add(new_threshold)
     
-    db.add(new_threshold)
     db.commit()
-    db.refresh(new_threshold)
 
-    return new_threshold
+    return existing_threshold if existing_threshold else new_threshold
 
 
 @router.put("/{asset_id}/threshold/{key}")
@@ -250,45 +265,48 @@ def delete_asset_threshold_with_key(asset_id: UUID, key: str,
 
     return Response(status_code=200, content=f"Successfully deleted {key} threshold")
 
-# @router.get("/{asset_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
-# def get_latest_farm_telemetry(asset_id: UUID, db: Session = Depends(get_db), 
-#                               current_user: models.User = Security(oauth2.get_current_user, 
-#                                                                    scopes=["tenant", "customer"])):
-#     farm: models.Farm = get_farm_by_id(asset_id, db, current_user)
+@router.get("/{asset_id}/telemetry/latest", response_model=List[schemas.AssetTelemetry])
+def get_latest_asset_telemetry(asset_id: UUID, db: Session = Depends(get_db), 
+                              current_user: models.User = Security(oauth2.get_current_user, 
+                                                                   scopes=["tenant", "customer"])):
+    asset: models.Asset = get_asset_by_id(asset_id, db, current_user)
     
-#     # if current_user.role == "tenant":
-#     #     devices = (db.query(models.Device)
-#     #                         .join(models.Farm, models.Device.asset_id == models.Farm.asset_id, isouter=True)
-#     #                         .filter(models.Farm.owner_id == current_user.user_id).all())
+    # if current_user.role == "tenant":
+    #     devices = (db.query(models.Device)
+    #                         .join(models.Farm, models.Device.asset_id == models.Farm.asset_id, isouter=True)
+    #                         .filter(models.Farm.owner_id == current_user.user_id).all())
     
-#     # telemetry = db.query(models.TimeSeries).join(models.Device,
-#     #                                              models.TimeSeries.device_id == models.Device.device_id,
-#     #                                              isouter=True).filter(models.Device.asset_id == asset_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
+    # telemetry = db.query(models.TimeSeries).join(models.Device,
+    #                                              models.TimeSeries.device_id == models.Device.device_id,
+    #                                              isouter=True).filter(models.Device.asset_id == asset_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
     
     
-#     cte = (
-#         db.query(
-#             models.TimeSeries.key,
-#             models.TimeSeries.value,
-#             models.Device.asset_id,
-#             models.Device.device_id,
-#             models.TimeSeries.timestamp,
-#             func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
-#         )
-#         .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
-#         .cte()
-#     )
+    cte = (
+        db.query(
+            models.TimeSeries.key,
+            models.TimeSeries.value,
+            models.Device.asset_id,
+            models.Device.device_id,
+            models.Device.name.label('device_name'),
+            models.TimeSeries.timestamp,
+            func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
+        )
+        .filter(models.Device.asset_id == asset_id)
+        .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
+        .cte()
+    )
 
-# # Main query to get the latest values for each key
-#     query = (
-#         db.query(
-#             cte.c.key,
-#             cte.c.value,
-#             cte.c.device_id,
-#             cte.c.timestamp
-#         )
-#         .filter(cte.c.row_num == 1)
-#     )
+    query = (
+        db.query(
+            cte.c.key,
+            cte.c.value,
+            cte.c.device_id,
+            cte.c.timestamp,
+            cte.c.device_name
+        )
+        .filter(cte.c.row_num == 1)
+    )
 
-#     result = query.all()
-#     return result
+    result = query.all()
+    print(result)
+    return result

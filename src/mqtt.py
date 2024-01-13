@@ -31,7 +31,7 @@ class MQTTSubscriber:
                 db = SessionLocal()
                 device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
                 current_asset = db.query(models.Asset).filter(models.Asset.asset_id == device.asset_id).first()
-                self.client.publish(f"asset/{current_asset.asset_id}/telemetry", json.dumps(data))
+                self.client.publish(f"assets/{current_asset.asset_id}/telemetry", json.dumps(data))
                 for key, value in data.items():
                     add_ts(device, key, value, db)
                     
@@ -47,7 +47,7 @@ class MQTTSubscriber:
             db = SessionLocal()
             device_ids = [str(device.device_id) for device in db.query(models.Device).all()]
             for device_id in device_ids:
-                self.client.subscribe(f"device/{device_id}/telemetry")
+                self.client.subscribe(f"devices/{device_id}/telemetry")
             print(f"Subscribed to {device_ids}")
         except Exception as e:
             print(f"Failed to query device IDs and subscribe to topics: {str(e)}")

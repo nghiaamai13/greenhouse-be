@@ -113,7 +113,6 @@ class DeviceCreate(DeviceBase):
 
 class DeviceResponse(DeviceBase):
     device_id: UUID
-    label: Optional[str] = None
     created_at: datetime
     asset_id: UUID
     device_profile_id: UUID
@@ -123,13 +122,23 @@ class DeviceResponse(DeviceBase):
     class Config:
         from_attributes = True
 
+class DeviceResponseTS(DeviceBase):
+    device_id: UUID
+    created_at: datetime
+    asset: AssetResponse
+    device_profile: DeviceProfileResponse
+
+    class Config:
+        from_attributes = True
 
 class TelemetryBase(BaseModel):
     key: str
     value: float
     timestamp: datetime
     device_id: UUID
-
+    
+class AssetTelemetry(TelemetryBase):
+    device_name: str
     
 class Token(BaseModel):
     access_token: str
