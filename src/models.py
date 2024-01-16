@@ -4,6 +4,10 @@ from sqlalchemy import (Boolean, Column, Integer, String, Float, Table,
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .database import Base
+from cassandra.cqlengine import columns
+from cassandra.cqlengine.models import Model
+
+from .config import settings
 
 
 class User(Base):
@@ -108,4 +112,16 @@ class TimeSeries(Base):
     key = Column(String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE"), nullable=False)
     device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+
+class TSCassandra(Model):
+    __keyspace__ = settings.astradb_keyspace
+    __table_name__ = 'ts_kv'
+    # values currently set as Float and assuming input are valid (not string) until type check update
+   
+    created_at = columns.DateTime(index=True, primary_key=True)
+    id = columns.UUID(primary_key=True, default=uuid.uuid4)  # Surrogate key
+    key = columns.Text()
+    device_id = columns.UUID(partition_key=True)
+    value = columns.Float()
     

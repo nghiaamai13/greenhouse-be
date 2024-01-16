@@ -3,9 +3,11 @@ from uuid import UUID
 from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from starlette import status
+from datetime import datetime, timezone
 
 from .. import models
 from ..database import get_db
+from ..cassandra_db import get_cassandra_session
 
 router = APIRouter( 
     prefix="/api",
@@ -26,12 +28,12 @@ def post_telemetry(device_id: UUID, db: Session = Depends(get_db),
                             detail="No data received")
     
     for key, value in data.items():
-        add_ts(device, key, value, db)
+        add_ts_postgres(device, key, value, db)
         
     print(f"Received telemetry datas from device with id: {device_id}")
 
 
-def add_ts(device: models.Device, key, value, db: Session):
+def add_ts_postgres(device: models.Device, key, value, db: Session):
     existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.ts_key == key).first()
     if not existing_key:
         new_key = models.TimeSeriesKey(ts_key=key)
@@ -55,3 +57,12 @@ def add_ts(device: models.Device, key, value, db: Session):
     )
     db.add(telemetry_data)
     db.commit()
+    
+def add_ts_cassandra(device: models.Device, key, value):
+    db = get_cassandra_session()
+
+    timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
+    telemetry_data = models.TSCassandra.create(key=key, device_id=device.device_id, value=float(value), created_at=timestamp)
+
+    print(f"Saved telemetry data to Cassandra: Device: {device.device_id}, Key: '{key}',Value: {value}")
+

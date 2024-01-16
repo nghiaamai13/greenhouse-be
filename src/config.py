@@ -1,4 +1,7 @@
 from pydantic_settings import BaseSettings
+import os
+
+os.environ["CQLENG_ALLOW_SCHEMA_MANAGEMENT"] = "1"
 
 class Settings(BaseSettings):
     database_hostname: str
@@ -9,6 +12,10 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int
+    
+    astradb_keyspace: str
+    astradb_client_id: str
+    astradb_client_secret: str
     
     class Config:
         env_file = ".env"

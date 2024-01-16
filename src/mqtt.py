@@ -1,8 +1,9 @@
 import paho.mqtt.client as mqtt
 from .database import SessionLocal
 from src import models
-import json
-from .route.telemetry import add_ts
+import json, time
+from threading import Thread
+from .route.telemetry import add_ts_postgres, add_ts_cassandra
 
 class MQTTSubscriber:
     def __init__(self):
@@ -33,7 +34,8 @@ class MQTTSubscriber:
                 current_asset = db.query(models.Asset).filter(models.Asset.asset_id == device.asset_id).first()
                 self.client.publish(f"assets/{current_asset.asset_id}/telemetry", json.dumps(data))
                 for key, value in data.items():
-                    add_ts(device, key, value, db)
+                    add_ts_postgres(device, key, value, db)
+                    add_ts_cassandra(device, key, value)
                     
             except Exception as e:
                 print(str(e))
@@ -54,9 +56,15 @@ class MQTTSubscriber:
         finally:
             db.close()
 
+def mqtt_thread():
         
-mqtt_subscriber = MQTTSubscriber()
-mqtt_subscriber.client.on_connect = mqtt_subscriber.on_connect
-mqtt_subscriber.client.on_message = mqtt_subscriber.on_message
-mqtt_subscriber.client.connect("localhost", 1883, 60)
-mqtt_subscriber.client.loop_start()
+    mqtt_subscriber = MQTTSubscriber()
+    mqtt_subscriber.client.on_connect = mqtt_subscriber.on_connect
+    mqtt_subscriber.client.on_message = mqtt_subscriber.on_message
+    mqtt_subscriber.client.connect("localhost", 1883, 60)
+    while True:
+        mqtt_subscriber.client.loop_start()
+        time.sleep(59)
+        
+mqtt_thread = Thread(target=mqtt_thread)
+mqtt_thread.start()

@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from cassandra.cqlengine.management import sync_table
 
 from . import models, utils
 from .database import SessionLocal, engine
 from .route import device, user, auth, farm, telemetry, asset
 from .config import settings
-from .cassandra_db import get_session
+from .cassandra_db import get_cassandra_session
 
 app = FastAPI(
     title="Greenhouse",
@@ -47,6 +48,12 @@ def create_admin():
             print(admin_user)
     finally:
         db.close()
+        
+@app.on_event("startup")
+def sync_cassandra_table():
+    db = get_cassandra_session()
+    print("Cassandra session: " + str(db))
+    sync_table(models.TSCassandra)
 
 
 @app.get('/')
