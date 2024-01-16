@@ -38,7 +38,6 @@ def add_ts(device: models.Device, key, value, db: Session):
         db.add(new_key)
         db.commit()
         db.refresh(new_key)
-        print(f"Inserted new key: {key}")
         
     else:
         new_key = existing_key

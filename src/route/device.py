@@ -139,7 +139,8 @@ def delete_device(device_id: UUID, db: Session = Depends(get_db),
     
     device.delete(synchronize_session=False)
     db.commit()
-    
+    mqtt.mqtt_subscriber.subscribe_all()
+
     return Response(status_code=200, content="Successfully deleted device")
 
     
@@ -204,32 +205,34 @@ def delete_device_profile(profile_id: UUID, db: Session = Depends(get_db),
 
 @router.get("/devices/{device_id}/telemetry/latest", response_model=List[schemas.TelemetryBase])
 def get_latest_device_telemetry(device_id: UUID, db: Session = Depends(get_db), 
-                              current_user: models.User = Security(oauth2.get_current_user, 
+                                current_user: models.User = Security(oauth2.get_current_user, 
                                                                    scopes=["tenant", "customer"])):
     device: models.Device = get_device_by_id(device_id, db, current_user)
-
-    ts_alias = aliased(models.TimeSeries)
     
+
     cte = (
         db.query(
             models.TimeSeries.key,
-            models.TimeSeries.device_id,
-            ts_alias.value,
-            ts_alias.timestamp,
-            func.row_number().over(
-                partition_by=models.TimeSeries.key,
-                order_by=models.TimeSeries.timestamp.desc()
-            ).label('row_num')
+            models.TimeSeries.value,
+            models.Device.device_id,
+            models.TimeSeries.timestamp,
+            func.row_number().over(partition_by=models.TimeSeries.key, order_by=models.TimeSeries.timestamp.desc()).label('row_num')
         )
-        .join(ts_alias, models.TimeSeries.key == ts_alias.key)
-        .filter(models.TimeSeries.device_id == device_id)
-        .cte(name="latest_telemetry")
+        .filter(models.Device.device_id == device_id)
+        .outerjoin(models.Device, models.TimeSeries.device_id == models.Device.device_id)
+        .cte()
     )
 
     query = (
-        db.query(cte.c.key, cte.c.value, cte.c.timestamp, cte.c.device_id)
+        db.query(
+            cte.c.key,
+            cte.c.value,
+            cte.c.device_id,
+            cte.c.timestamp,
+        )
         .filter(cte.c.row_num == 1)
     )
-    print(query.all())
 
-    return query.all()
+    result = query.all()
+    print(result)
+    return result

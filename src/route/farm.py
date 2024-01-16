@@ -155,6 +155,16 @@ def assign_farm_to_customer(farm_id: UUID, customer_id: UUID, db: Session = Depe
                     media_type="application/json")
 
 
+@router.get("/{farm_id}/assets", response_model=List[schemas.AssetResponse])
+def get_list_farm_asset_greenhouse(farm_id: UUID, db: Session = Depends(get_db),
+                                   current_user: models.User = Security(oauth2.get_current_user,
+                                                                        scopes=["tenant", "customer"])):
+    farm = get_farm_by_id(farm_id, db, current_user)
+    assets = db.query(models.Asset).filter(models.Asset.farm_id == farm_id).all()
+    
+    return assets
+
+
 @router.get("/{farm_id}/assets/greenhouses", response_model=List[schemas.AssetResponse])
 def get_list_farm_asset_greenhouse(farm_id: UUID, db: Session = Depends(get_db),
                          current_user: models.User = Security(oauth2.get_current_user,

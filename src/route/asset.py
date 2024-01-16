@@ -271,16 +271,6 @@ def get_latest_asset_telemetry(asset_id: UUID, db: Session = Depends(get_db),
                                                                    scopes=["tenant", "customer"])):
     asset: models.Asset = get_asset_by_id(asset_id, db, current_user)
     
-    # if current_user.role == "tenant":
-    #     devices = (db.query(models.Device)
-    #                         .join(models.Farm, models.Device.asset_id == models.Farm.asset_id, isouter=True)
-    #                         .filter(models.Farm.owner_id == current_user.user_id).all())
-    
-    # telemetry = db.query(models.TimeSeries).join(models.Device,
-    #                                              models.TimeSeries.device_id == models.Device.device_id,
-    #                                              isouter=True).filter(models.Device.asset_id == asset_id).order_by(models.TimeSeries.timestamp.desc()).limit(1).first()
-    
-    
     cte = (
         db.query(
             models.TimeSeries.key,

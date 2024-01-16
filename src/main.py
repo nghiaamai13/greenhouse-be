@@ -2,9 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models, utils
-from .database import SessionLocal
-from .database import engine
+from .database import SessionLocal, engine
 from .route import device, user, auth, farm, telemetry, asset
+from .config import settings
+from .cassandra_db import get_session
 
 app = FastAPI(
     title="Greenhouse",

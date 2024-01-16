@@ -9,12 +9,13 @@ from starlette import status
 from pydantic import ValidationError
 
 from . import schemas, models, database
+from .config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
-SECRET_KEY = "nghia"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 
 def create_access_token(data: dict):
