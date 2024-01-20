@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (Boolean, Column, Integer, String, Float, Table,
-                        func, DateTime, ForeignKey, UniqueConstraint)
+                        func, DateTime, ForeignKey, UniqueConstraint, ARRAY)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -33,19 +33,14 @@ class Farm(Base):
     farm_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     descriptions = Column(String(250))
+    location = Column(ARRAY(Float), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)    
     assigned_customer = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     owner = relationship('User', foreign_keys=[owner_id], primaryjoin="Farm.owner_id == User.user_id")
     customer = relationship('User', foreign_keys=[assigned_customer], primaryjoin="Farm.assigned_customer == User.user_id")
 
-#     farm_keys = relationship('TimeSeriesKey', secondary='key_usages')
-    
-# key_usages = Table('key_usages', Base.metadata,
-#     Column('farm_id', UUID(as_uuid=True), ForeignKey('farms.farm_id', ondelete="CASCADE")),
-#     Column('ts_key', String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE")),
-#     UniqueConstraint('farm_id', 'ts_key')
-# )
+
 
 
 class Asset(Base):
@@ -78,7 +73,7 @@ class Threshold(Base):
     modified_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     modified_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     __table_args__ = (
-        UniqueConstraint('asset_id', 'key', name='uq_farm_key_pair'),
+        UniqueConstraint('asset_id', 'key', name='uq_asset_key_pair'),
     )
 
 class DeviceProfile(Base):
@@ -105,14 +100,16 @@ class Device(Base):
 
 
 class TimeSeries(Base):
-    __tablename__ = 'ts_values'
+    __tablename__ = 'ts_values_latest'
     # values currently set as Float and assuming input are valid (not string) until type check update
     value = Column(Float, nullable=False)
-    ts_id = Column(Integer, primary_key=True)
+    ts_id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String, ForeignKey('ts_keys.ts_key', ondelete="CASCADE"), nullable=False)
     device_id = Column(UUID(as_uuid=True), ForeignKey('devices.device_id', ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+    __table_args__ = (
+        UniqueConstraint('device_id', 'key', name='uq_ts_device_key_pair'),
+    )
 
 class TSCassandra(Model):
     __keyspace__ = settings.astradb_keyspace

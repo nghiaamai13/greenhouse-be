@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from uuid import UUID
 from enum import Enum
 from pydantic import BaseModel, validator
@@ -34,6 +34,8 @@ class UserResponse(BaseModel):
 class FarmBase(BaseModel):
     name: str
     descriptions: Optional[str] = None
+    
+    location: Optional[Tuple[float, float]] = None
 #    assigned_customer: Optional[UUID] = None
 
 

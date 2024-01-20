@@ -35,6 +35,7 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
     new_farm = models.Farm(owner_id=current_user.user_id,
                            name=farm.name,
                            descriptions=farm.descriptions,
+                           location=farm.location,
                            assigned_customer=farm.customer.user_id if farm.customer else None)
         
     
@@ -62,7 +63,7 @@ def get_list_farm(
     default_order_column = models.Farm.created_at
     order_column = order_mapping.get(_sort, default_order_column)
 
-    query = db.query(models.Farm).join(models.User, models.Farm.assigned_customer == models.User.user_id)
+    query = db.query(models.Farm).join(models.User, models.Farm.assigned_customer == models.User.user_id, isouter=True)
 
     if current_user.role == "tenant":
         query = query.filter(models.Farm.owner_id == current_user.user_id)
@@ -107,6 +108,7 @@ def update_farm(farm_id: UUID, new_farm: schemas.FarmCreate, db: Session = Depen
     update_data = {
         "name": new_farm.name,
         "descriptions": new_farm.descriptions,
+        "location": new_farm.location,
         "assigned_customer": new_farm.customer.user_id if new_farm.customer else None
     }
     print(update_data)

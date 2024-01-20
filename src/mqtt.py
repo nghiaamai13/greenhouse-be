@@ -1,7 +1,7 @@
 import paho.mqtt.client as mqtt
 from .database import SessionLocal
 from src import models
-import json, time
+import json
 from threading import Thread
 from .route.telemetry import add_ts_postgres, add_ts_cassandra
 
@@ -12,14 +12,12 @@ class MQTTSubscriber:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print("Connected to the MQTT broker")
-            
             self.subscribe_all()
    
        
     def on_message(self, client, userdata, msg):
-        print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
         device_id = msg.topic.split('/')[1]
-        print(f"Device ID: {device_id}")
+        print(f"Received message from device {device_id}, message: {msg.payload.decode()}")
         try:
             data = json.loads(msg.payload.decode())
         except json.JSONDecodeError:
@@ -27,23 +25,26 @@ class MQTTSubscriber:
             return
 
         if isinstance(data, dict) and bool(data):
-            print("Received a non-empty JSON object. Inserting into the database.")
+            print("Received valid JSON object. Inserting into the databases.")
             try:
+                # Republish for fe
                 db = SessionLocal()
                 device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
-                current_asset = db.query(models.Asset).filter(models.Asset.asset_id == device.asset_id).first()
-                self.client.publish(f"assets/{current_asset.asset_id}/telemetry", json.dumps(data))
+                self.client.publish(f"assets/{device.asset_id}/telemetry", json.dumps(data))
+                # Add ts to databases
                 for key, value in data.items():
-                    add_ts_postgres(device, key, value, db)
-                    add_ts_cassandra(device, key, value)
+                    if type(value) != int and type(value) != float:
+                        print(f"Invalid value type received for key '{key}':  {type(value)}")
+                        continue
+                    Thread(target=add_ts_cassandra, args=(device_id, key, value)).start()
+                    Thread(target=add_ts_postgres, args=(device_id, key, value, db)).start()
+                    #add_ts_postgres(device_id, key, value, db)
                     
             except Exception as e:
                 print(str(e))
             finally:
                 db.close()
-                
-    
-
+            
     def subscribe_all(self):
         try:
             db = SessionLocal()
@@ -56,15 +57,9 @@ class MQTTSubscriber:
         finally:
             db.close()
 
-def mqtt_thread():
-        
-    mqtt_subscriber = MQTTSubscriber()
-    mqtt_subscriber.client.on_connect = mqtt_subscriber.on_connect
-    mqtt_subscriber.client.on_message = mqtt_subscriber.on_message
-    mqtt_subscriber.client.connect("localhost", 1883, 60)
-    while True:
-        mqtt_subscriber.client.loop_start()
-        time.sleep(59)
-        
-mqtt_thread = Thread(target=mqtt_thread)
-mqtt_thread.start()
+mqtt_subscriber = MQTTSubscriber()
+mqtt_subscriber.client.on_connect = mqtt_subscriber.on_connect
+mqtt_subscriber.client.on_message = mqtt_subscriber.on_message
+mqtt_subscriber.client.connect("localhost", 1883, 60)
+
+mqtt_subscriber.client.loop_start()

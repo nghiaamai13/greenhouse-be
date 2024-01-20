@@ -55,7 +55,6 @@ def sync_cassandra_table():
     print("Cassandra session: " + str(db))
     sync_table(models.TSCassandra)
 
-
 @app.get('/')
 def home():
     return {"message": "Hello"}

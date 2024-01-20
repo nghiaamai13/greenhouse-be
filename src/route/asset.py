@@ -88,11 +88,18 @@ def get_asset_by_id(asset_id: UUID, db: Session = Depends(get_db),
     asset = db.query(models.Asset).filter(models.Asset.asset_id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Asset not found")
-    customer_id = asset.farm.customer.user_id    
-    if asset.owner_id != current_user.user_id and customer_id != current_user.user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Asset not found")    
+                            detail="Asset not found") 
+    
+    if asset.farm.customer is not None: 
+        customer_id = asset.farm.customer.user_id    
+        if asset.owner_id != current_user.user_id and customer_id != current_user.user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Asset not found")    
+            
+    else :
+        if asset.owner_id != current_user.user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Asset not found")
     
     return asset
 
