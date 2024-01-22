@@ -50,6 +50,7 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db),
 def get_list_devices(
     db: Session = Depends(get_db),
     current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant", "customer"]),
+    response: Response = None,
     _order: str = Query("asc", description="Sorting order: asc or desc", regex="^(asc|desc)$"),
     _sort: str = Query(None, description="Order by a specific field", regex="^[a-zA-Z_]+$")
 ):
@@ -82,6 +83,9 @@ def get_list_devices(
         devices_query = devices_query.order_by(order_column.desc())
 
     devices = devices_query.all()
+    total = devices_query.count()
+    
+    response.headers["X-Total-Count"] = str(total)
 
     return devices
 

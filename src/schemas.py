@@ -35,7 +35,7 @@ class FarmBase(BaseModel):
     name: str
     descriptions: Optional[str] = None
     
-    location: Optional[Tuple[float, float]] = None
+    location: Tuple[float, float]
 #    assigned_customer: Optional[UUID] = None
 
 

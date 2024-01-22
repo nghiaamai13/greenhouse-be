@@ -4,6 +4,7 @@ import json
 import datetime
 
 from fastapi import Depends, APIRouter, HTTPException, Security, Response, Body, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
@@ -50,6 +51,7 @@ def create_farm(farm: schemas.FarmCreate, db: Session = Depends(get_db),
 def get_list_farm(
     db: Session = Depends(get_db),
     current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant", "customer"]),
+    response: Response = None,
     _order: str = Query("asc", description="Sorting order: asc or desc", regex="^(asc|desc)$"),
     _sort: str = Query(None, description="Order by a specific field", regex="^[a-zA-Z_]+$")
 ):
@@ -76,6 +78,10 @@ def get_list_farm(
         query = query.order_by(order_column.desc())
 
     farms = query.all()
+    
+    total = query.count()
+    
+    response.headers["X-Total-Count"] = str(total)
 
     return farms
 

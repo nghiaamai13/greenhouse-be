@@ -40,12 +40,10 @@ def create_asset(asset: schemas.AssetCreate,
 def get_list_asset(
     db: Session = Depends(get_db),
     current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant", "customer"]),
+    response: Response = None,
     _order: str = Query("asc", description="Sorting order: asc or desc", regex="^(asc|desc)$"),
     _sort: str = Query(None, description="Order by a specific field", regex="^[a-zA-Z_]+$")
 ):
-    # Validate and sanitize input values if necessary
-
-    # Define a dictionary to map the query parameter to the actual column in the database
     order_mapping = {
         "name": models.Asset.name,
         "type": models.Asset.type,
@@ -77,6 +75,9 @@ def get_list_asset(
         assets_query = assets_query.order_by(order_column.desc())
 
     assets = assets_query.all()
+    total = assets_query.count()
+    
+    response.headers["X-Total-Count"] = str(total)
 
     return assets
 
@@ -164,6 +165,16 @@ def get_thresholds_of_asset(asset_id: UUID, db: Session = Depends(get_db),
 
     return thresholds
     
+@router.get("/{asset_id}/threshold/{key}")
+def get_threshold_of_asset_by_key(asset_id: UUID, key: str,
+                                 db: Session = Depends(get_db),
+                                 current_user: models.User = Security(oauth2.get_current_user,
+                                                                     scopes=["tenant", "customer"])):
+    get_asset_by_id(asset_id, db, current_user)
+    threshold = db.query(models.Threshold).filter(models.Threshold.asset_id==asset_id,
+                                                 models.Threshold.key==key).first()
+    
+    return threshold
     
 @router.post("/{asset_id}/threshold/{key}")
 def set_asset_threshold_on_key(asset_id: UUID, key: str,

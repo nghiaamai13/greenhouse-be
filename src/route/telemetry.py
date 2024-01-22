@@ -1,11 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Security
 from sqlalchemy.orm import Session
 from starlette import status
 from datetime import datetime, timezone
 
-from .. import models
+from .. import models, oauth2
 from ..database import get_db
 from ..cassandra_db import get_cassandra_session
 
@@ -88,4 +88,23 @@ def add_ts_cassandra(device_id: str, key, value):
 
     print(f"Saved telemetry data to Cassandra: Device: {device_id}, Key: '{key}', Value: {value}")
 
+@router.get("/telemetry/count")
+def count_all_telemetry(db: Session = Depends(get_db), current_user: models.User = Security(oauth2.get_current_user, scopes=["tenant", "customer"])):
+    join = db.query(models.Device).join(models.Asset, models.Device.asset_id == models.Asset.asset_id, isouter=True).join(models.Farm, models.Asset.farm_id == models.Farm.farm_id, isouter=True)
+    if current_user.role == "tenant":
+        devices_query = join.filter(models.Farm.owner_id == current_user.user_id)
+    else:
+        devices_query = join.filter(models.Farm.assigned_customer == current_user.user_id)
 
+    device_ids = [str(device.device_id) for device in devices_query.all()]
+        
+    try:
+        cassandra_session = get_cassandra_session()
+        count_query = f"SELECT COUNT(*) FROM {models.TSCassandra.__keyspace__}.{models.TSCassandra.__table_name__} WHERE device_id IN ({','.join(device_ids)});"
+        count_result = cassandra_session.execute(count_query)
+        return count_result.one()['count'] if count_result else 0
+
+    finally:
+        cassandra_session.shutdown()
+    
+    
