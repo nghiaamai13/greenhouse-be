@@ -37,8 +37,8 @@ class MQTTSubscriber:
                         print(f"Invalid value type received for key '{key}':  {type(value)}")
                         continue
                     Thread(target=add_ts_cassandra, args=(device_id, key, value)).start()
-                    Thread(target=add_ts_postgres, args=(device_id, key, value, db)).start()
-                    #add_ts_postgres(device_id, key, value, db)
+                    #Thread(target=add_ts_postgres, args=(device_id, key, value, db)).start()
+                    add_ts_postgres(device_id, key, value, db)
                     
             except Exception as e:
                 print(str(e))

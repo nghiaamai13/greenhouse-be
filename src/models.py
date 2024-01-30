@@ -41,8 +41,6 @@ class Farm(Base):
     customer = relationship('User', foreign_keys=[assigned_customer], primaryjoin="Farm.assigned_customer == User.user_id")
 
 
-
-
 class Asset(Base):
     __tablename__ = 'assets'
     asset_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

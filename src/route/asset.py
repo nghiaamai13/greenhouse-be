@@ -154,7 +154,24 @@ def get_list_asset_keys(asset_id: UUID, db: Session = Depends(get_db),
                                                           scopes=["tenant", "customer"])):
     asset = get_asset_by_id(asset_id, db, current_user)
     return asset.asset_keys
+
+@router.delete("/{asset_id}/keys/{key}")
+def delete_asset_key(asset_id: UUID, key: str, db: Session = Depends(get_db),
+                     current_user: models.User = Security(oauth2.get_current_user,
+                                                          scopes=["tenant", "customer"])):
+    asset = get_asset_by_id(asset_id, db, current_user)
+    existing_key = db.query(models.TimeSeriesKey).filter(models.TimeSeriesKey.ts_key==key).first()
+    if not existing_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail={"Key not found"})
+        
+    print(asset.asset_keys)
+    if existing_key in asset.asset_keys:
+        asset.asset_keys.remove(existing_key)
+        db.commit()
+        return Response(status_code=200, content=f"Successfully deleted key: {key}")
     
+    return Response(status_code=404, content=f"Key: {key} not found on asset")
     
 @router.get("/{asset_id}/thresholds")
 def get_thresholds_of_asset(asset_id: UUID, db: Session = Depends(get_db),
