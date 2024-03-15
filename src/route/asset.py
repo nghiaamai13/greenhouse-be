@@ -335,3 +335,46 @@ def get_latest_asset_telemetry(asset_id: UUID, db: Session = Depends(get_db),
     result = query.all()
     print(result)
     return result
+
+
+@router.post("/{asset_id}/cameras", status_code=status.HTTP_201_CREATED, response_model=schemas.CameraSourceResponse)
+def create_asset_camera_source(asset_id: UUID,
+                               camera: schemas.CameraSourceCreate,
+                               db: Session = Depends(get_db),
+                               current_user: models.User = Security(oauth2.get_current_user,
+                                                     scopes=["tenant"])):
+    get_asset_by_id(asset_id ,db, current_user)
+    camera_with_name = db.query(models.CameraSource).filter(models.CameraSource.camera_source_name == camera.camera_source_name, models.CameraSource.asset_id == asset_id).all()
+    if camera_with_name:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Camera with same name already exists in this asset")
+    new_camera = models.CameraSource(asset_id=asset_id, **camera.model_dump())
+    db.add(new_camera)
+    db.commit()
+    db.refresh(new_camera)
+    return new_camera
+
+
+@router.get("/{asset_id}/cameras", response_model=List[schemas.CameraSourceResponse])
+def get_list_asset_cameras(asset_id: UUID,
+                           db: Session = Depends(get_db),
+                           current_user: models.User = Security(oauth2.get_current_user,
+                                                                 scopes=["tenant", "customer"])):
+    get_asset_by_id(asset_id, db, current_user)
+    cameras = db.query(models.CameraSource).filter(models.CameraSource.asset_id == asset_id).all()
+    return cameras
+
+
+@router.delete("/{asset_id}/cameras/{camera_source_id}")
+def delete_asset_camera_source(asset_id: UUID, camera_source_id: UUID,
+                               db: Session = Depends(get_db),
+                               current_user: models.User = Security(oauth2.get_current_user,
+                                                                 scopes=["tenant"])):
+    get_asset_by_id(asset_id, db, current_user)
+    camera = db.query(models.CameraSource).filter(models.CameraSource.camera_source_id == camera_source_id)
+    if not camera.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Camera not found")
+    camera.delete(synchronize_session=False)
+    db.commit()
+    return Response(status_code=200, content="Successfully deleted camera")

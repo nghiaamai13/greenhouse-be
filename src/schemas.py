@@ -100,6 +100,24 @@ class DeviceProfileResponse(DeviceProfileBase):
 
     class Config:
         from_attributes = True
+        
+        
+class CameraSourceBase(BaseModel):
+    camera_source_name: str
+    url: str
+
+
+class CameraSourceCreate(CameraSourceBase):
+    pass
+
+
+class CameraSourceResponse(CameraSourceBase):
+    camera_source_id: UUID
+    created_at: datetime
+    asset_id: UUID
+
+    class Config:
+        from_attributes = True
 
 
 class DeviceBase(BaseModel):
