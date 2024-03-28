@@ -1,0 +1,53 @@
+version: "3.8"
+services:
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: abc123
+      POSTGRES_DB: greenhouse
+    ports:
+      - "54322:5432"
+    volumes:
+      - db_volume:/var/lib/postgresql/data
+    user: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mqtt_broker:
+    image: eclipse-mosquitto
+    ports:
+      - "18833:1883"
+      - "9000:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_config:/mosquitto/config
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-p", "1883", "-t", "test", "-m", "test"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+  fastapi:
+    build: .
+    ports:
+      - "8008:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt_broker:
+        condition: service_healthy
+    
+    command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"
+networks:
+  greenhouse-network:
+    driver: bridge
+
+volumes:
+  db_volume:
+  mosquitto_data:
+  mosquitto_config:

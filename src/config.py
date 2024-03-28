@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     database_name: str
     database_username: str
     database_password: str
+    mqtt_hostname: str
+    mqtt_port: str
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int

@@ -4,6 +4,7 @@ from src import models
 import json
 from threading import Thread
 from .route.telemetry import add_ts_postgres, add_ts_cassandra
+from .config import settings
 
 class MQTTSubscriber:
     def __init__(self):
@@ -11,7 +12,7 @@ class MQTTSubscriber:
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            print("Connected to the MQTT broker")
+            print(f"Connected to the MQTT broker {settings.mqtt_hostname}:{settings.mqtt_port}")
             self.subscribe_all()
    
        
@@ -56,10 +57,17 @@ class MQTTSubscriber:
             print(f"Failed to query device IDs and subscribe to topics: {str(e)}")
         finally:
             db.close()
+            
+    def on_disconnect(self, client, userdata, rc):
+        if rc != 0:
+            print("Unexpected disconnection. Attempting to reconnect...")
+            self.client.reconnect()
+        
 
 mqtt_subscriber = MQTTSubscriber()
 mqtt_subscriber.client.on_connect = mqtt_subscriber.on_connect
 mqtt_subscriber.client.on_message = mqtt_subscriber.on_message
-mqtt_subscriber.client.connect("localhost", 1883, 60)
+mqtt_subscriber.client.connect(settings.mqtt_hostname, int(settings.mqtt_port), 10)
+mqtt_subscriber.client.on_disconnect = mqtt_subscriber.on_disconnect
 
 mqtt_subscriber.client.loop_start()
