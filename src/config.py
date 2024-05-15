@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     astradb_keyspace: str
     astradb_client_id: str
     astradb_client_secret: str
+
+    admin_password: str
     
     class Config:
         env_file = ".env"

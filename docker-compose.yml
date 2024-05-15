@@ -6,8 +6,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: abc123
       POSTGRES_DB: greenhouse
-    ports:
-      - "54322:5432"
     volumes:
       - db_volume:/var/lib/postgresql/data
     user: postgres
@@ -20,7 +18,7 @@ services:
   mqtt_broker:
     image: eclipse-mosquitto
     ports:
-      - "18833:1883"
+      - "1884:1883"
       - "9000:9001"
     volumes:
       - mosquitto_data:/mosquitto/data
@@ -35,7 +33,7 @@ services:
   fastapi:
     build: .
     ports:
-      - "8008:8000"
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy

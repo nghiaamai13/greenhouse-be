@@ -120,6 +120,7 @@ def update_device(device_id: UUID, new_device: schemas.DeviceCreate, db: Session
     
     update_data = {
         "name": new_device.name,
+        "label": new_device.label,
         "asset_id": new_device.asset_id,
         "device_profile_id": new_device.device_profile_id
     }

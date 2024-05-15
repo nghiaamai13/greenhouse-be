@@ -41,7 +41,7 @@ def create_admin():
     try:
         if not db.query(models.User).all():
             admin_user = models.User(username="admin",
-                                     password=utils.get_password_hash("admin"),
+                                     password=utils.get_password_hash(settings.admin_password),
                                      role="admin",
                                      created_by='00000000-0000-0000-0000-000000000000')
             db.add(admin_user)
